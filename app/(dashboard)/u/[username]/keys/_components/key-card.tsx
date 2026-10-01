@@ -13,19 +13,19 @@ export function KeyCard({ value }: { value: string | null }) {
   return (
     <div className="rounded-xl bg-muted p-6">
       <div className="flex items-start gap-x-10">
-        <p className="font-semibold shrink-0">Stream Key</p>
+        <p className="font-semibold shrink-0">Khóa Stream</p>
         <div className="space-y-2 w-full">
           <div className="w-full flex items-center gap-x-2">
             <Input
               value={value || ""}
               disabled
-              placeholder="Stream Key"
+              placeholder="Khóa Stream"
               type={show ? "text" : "password"}
             />
             <CopyButton value={value || ""} />
           </div>
           <Button size="sm" variant="link" onClick={() => setShow(!show)}>
-            {show ? "Hide" : "Show"}
+            {show ? "Ẩn" : "Hiện"}
           </Button>
         </div>
       </div>

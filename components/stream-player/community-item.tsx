@@ -31,10 +31,10 @@ export function CommunityItem({
 
     startTransition(() => {
       onBlock(participantIdentity)
-        .then(() => toast.success(`Blocked ${participantName}`))
+        .then(() => toast.success(`Đã chặn ${participantName}`))
         .catch(() =>
           toast.error(
-            `Failed to block ${participantName}, Something went wrong`
+            `Không thể chặn ${participantName}, Đã xảy ra lỗi`
           )
         );
     });
@@ -49,7 +49,7 @@ export function CommunityItem({
     >
       <p style={{ color: color }}>{participantName}</p>
       {isHost && !isSelf && (
-        <Hint label="Block">
+        <Hint label="Chặn">
           <Button
             variant="ghost"
             disabled={isPending}

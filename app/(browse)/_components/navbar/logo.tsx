@@ -18,7 +18,7 @@ export function Logo() {
         </div>
         <div className={cn(font.className, "hidden lg:block")}>
           <p className="text-lg font-semibold">GameHub</p>
-          <p className="text-xs text-muted-foreground">Let&apos;s Play</p>
+          <p className="text-xs text-muted-foreground">Cùng chơi nào</p>
         </div>
       </div>
     </Link>

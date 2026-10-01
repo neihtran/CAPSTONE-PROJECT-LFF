@@ -8,6 +8,15 @@ import { Button } from "@/components/ui/button";
 import { onFollow, onUnfollow } from "@/actions/follow";
 import { onBlock, onUnblock } from "@/actions/block";
 
+/**
+ * Extract error message từ Error object hoặc fallback.
+ * Server actions throw Error với message tiếng Việt, client nhận qua reject.
+ */
+const extractError = (error: unknown, fallback: string): string => {
+  if (error instanceof Error) return error.message;
+  return fallback;
+};
+
 export function Actions({
   isFollowing,
   userId,
@@ -21,9 +30,11 @@ export function Actions({
     startTransition(() => {
       onFollow(userId)
         .then((data) =>
-          toast.success(`You are now following ${data.following.username}`)
+          toast.success(`Bạn đã theo dõi ${data.following.username}`)
         )
-        .catch(() => toast.error("Something went wrong, failed to follow"));
+        .catch((error) =>
+          toast.error(extractError(error, "Không thể theo dõi, vui lòng thử lại"))
+        );
     });
   };
 
@@ -31,9 +42,11 @@ export function Actions({
     startTransition(() => {
       onUnfollow(userId)
         .then((data) =>
-          toast.success(`You have unfollowed ${data.following.username}`)
+          toast.success(`Bạn đã bỏ theo dõi ${data.following.username}`)
         )
-        .catch(() => toast.error("Something went wrong, failed to follow"));
+        .catch((error) =>
+          toast.error(extractError(error, "Không thể bỏ theo dõi, vui lòng thử lại"))
+        );
     });
   };
 
@@ -41,21 +54,25 @@ export function Actions({
     startTransition(() => {
       onBlock(userId)
         .then((data) =>
-          !!data
-            ? toast.success(`You have blocked ${data?.blocked.username}`)
-            : toast.success("Blocked guest")
+          toast.success(
+            data
+              ? `Bạn đã chặn ${data.blocked.username}`
+              : "Đã chặn (người dùng không đăng ký)"
+          )
         )
-        .catch(() => toast.error("Something went wrong, failed to block"));
+        .catch((error) =>
+          toast.error(extractError(error, "Không thể chặn, vui lòng thử lại"))
+        );
     });
   };
 
   const handleUnblock = () => {
     startTransition(() => {
       onUnblock(userId)
-        .then((data) =>
-          toast.success(`You have unblocked ${data.blocked.username}`)
-        )
-        .catch(() => toast.error("Something went wrong, failed to unblock"));
+        .then((data) => toast.success(`Đã bỏ chặn ${data.blocked.username}`))
+        .catch((error) =>
+          toast.error(extractError(error, "Không thể bỏ chặn, vui lòng thử lại"))
+        );
     });
   };
 
@@ -70,13 +87,13 @@ export function Actions({
   return (
     <>
       <Button variant="primary" disabled={isPending} onClick={onClick}>
-        {isFollowing ? "Unfollow" : "Follow"}
+        {isFollowing ? "Bỏ theo dõi" : "Theo dõi"}
       </Button>
       <Button onClick={handleBlock} disabled={isPending}>
-        Block
+        Chặn
       </Button>
       <Button onClick={handleUnblock} disabled={isPending}>
-        UnBlock
+        Bỏ chặn
       </Button>
     </>
   );

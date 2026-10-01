@@ -26,7 +26,7 @@ export function VolumeControl({
     Icon = Volume2;
   }
 
-  const label = isMuted ? "Unmute" : "Mute";
+  const label = isMuted ? "Bật tiếng" : "Tắt tiếng";
 
   const handleChange = (value: number[]) => {
     onChange(value[0]);

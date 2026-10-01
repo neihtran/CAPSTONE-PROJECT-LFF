@@ -33,10 +33,10 @@ export function InfoCard({
           </div>
           <div>
             <h2 className="text-sm lg:text-lg font-semibold capitalize">
-              Edit your stream info
+              Chỉnh sửa thông tin Stream
             </h2>
             <p className="text-muted-foreground text-xs lg:text-sm">
-              Maximize your visibility
+              Tăng khả năng hiển thị của bạn
             </p>
           </div>
           <InfoModal initialName={name} initialThumbnailUrl={thumbnailUrl} />
@@ -44,11 +44,11 @@ export function InfoCard({
         <Separator />
         <div className="p-4 lg:p-6 space-y-4">
           <div>
-            <h3 className="text-sm text-muted-foreground mb-2">Name</h3>
+            <h3 className="text-sm text-muted-foreground mb-2">Tên</h3>
             <p className="text-sm font-semibold">{name}</p>
           </div>
           <div>
-            <h3 className="text-sm text-muted-foreground mb-2">Thumbnail</h3>
+            <h3 className="text-sm text-muted-foreground mb-2">Hình thu nhỏ</h3>
             {thumbnailUrl && (
               <div className="relative aspect-video rounded-md overflow-hidden w-[200px] border border-white/10">
                 <Image

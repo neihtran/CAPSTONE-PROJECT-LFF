@@ -16,9 +16,21 @@ export default async function CreatorPage({
     throw new Error("Unauthorized");
   }
 
+  // Streamer xem trang của mình → luôn là moderator (owner).
+  const moderationInfo = {
+    isModerator: true,
+    currentUserId: externalUser?.id ?? null,
+  };
+
   return (
     <div className="h-full">
-      <StreamPlayer user={user} stream={user.stream} isFollowing={true} />
+      <StreamPlayer
+        user={user}
+        stream={user.stream}
+        isFollowing={true}
+        moderationInfo={moderationInfo}
+        viewerIsLoggedIn={!!externalUser}
+      />
     </div>
   );
 }

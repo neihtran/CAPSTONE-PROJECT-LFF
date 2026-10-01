@@ -36,23 +36,23 @@ export function ConnectModal() {
 
   const onSubmit = () => {
     startTransition(() => {
-      createIngress(parseInt(ingressType))
+      createIngress(Number(ingressType) as IngressInput)
         .then(() => {
-          toast.success("Connection generated");
+          toast.success("Đã tạo kết nối");
           closeRef?.current?.click();
         })
-        .catch(() => toast.error("Connection generation failed"));
+        .catch(() => toast.error("Tạo kết nối thất bại"));
     });
   };
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="primary">Generate connection</Button>
+        <Button variant="primary">Tạo kết nối</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Generate connection</DialogTitle>
+          <DialogTitle>Tạo kết nối</DialogTitle>
         </DialogHeader>
         <Select
           disabled={isPending}
@@ -60,7 +60,7 @@ export function ConnectModal() {
           onValueChange={(value) => setIngressType(value)}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Ingress Type" />
+            <SelectValue placeholder="Loại kết nối" />
             <SelectContent>
               <SelectItem value={RTMP}>RTMP</SelectItem>
               <SelectItem value={WHIP}>WHIP</SelectItem>
@@ -69,18 +69,17 @@ export function ConnectModal() {
         </Select>
         <Alert>
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Warning!</AlertTitle>
+          <AlertTitle>Cảnh báo!</AlertTitle>
           <AlertDescription>
-            This action will reset all active streams using the currnet
-            connection.
+            Thao tác này sẽ đặt lại tất cả các Stream đang hoạt động sử dụng kết nối hiện tại.
           </AlertDescription>
         </Alert>
         <div className="flex justify-between">
           <DialogClose ref={closeRef} asChild>
-            <Button variant="ghost">Cancel</Button>
+            <Button variant="ghost">Hủy</Button>
           </DialogClose>
           <Button disabled={isPending} onClick={onSubmit} variant="primary">
-            Generate
+            Tạo
           </Button>
         </div>
       </DialogContent>

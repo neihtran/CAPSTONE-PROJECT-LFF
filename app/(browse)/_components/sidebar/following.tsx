@@ -24,7 +24,7 @@ export function Following({
     <div>
       {!collapsed && (
         <div className="pl-6 mb-4">
-          <p className="text-sm text-muted-foreground">Following</p>
+          <p className="text-sm text-muted-foreground">Đang theo dõi</p>
         </div>
       )}
       <ul className="space-y-2 px-2">

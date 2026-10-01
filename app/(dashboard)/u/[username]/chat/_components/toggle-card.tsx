@@ -23,9 +23,9 @@ export function ToggleCard({
   const onChange = async () => {
     startTransition(() => {
       updateStream({ [field]: !value })
-        .then(() => toast.success("Chat settings updated"))
+        .then(() => toast.success("Đã cập nhật cài đặt Chat"))
         .catch(() =>
-          toast.error("Something went wrong, failed to update chat settings")
+          toast.error("Đã xảy ra lỗi, không thể cập nhật cài đặt Chat")
         );
     });
   };
@@ -40,7 +40,7 @@ export function ToggleCard({
             onCheckedChange={onChange}
             checked={value}
           >
-            {value ? "On" : "Off"}
+            {value ? "Bật" : "Tắt"}
           </Switch>
         </div>
       </div>

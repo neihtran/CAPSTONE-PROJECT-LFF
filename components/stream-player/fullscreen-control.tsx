@@ -14,7 +14,7 @@ export function FullscreenControl({
 }) {
   const Icon = isFullscreen ? Minimize : Maximize;
 
-  const label = isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen";
+  const label = isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình";
 
   return (
     <div className="flex items-center justify-center gap-4">

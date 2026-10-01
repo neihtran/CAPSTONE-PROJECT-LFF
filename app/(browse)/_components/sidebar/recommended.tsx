@@ -20,7 +20,7 @@ export function Recommended({
     <div>
       {showLabel && (
         <div className="pl-6 mb-4">
-          <p className="text-xs text-muted-foreground">Recommended</p>
+          <p className="text-xs text-muted-foreground">Đề xuất</p>
         </div>
       )}
       <ul className="space-y-2 px-2">

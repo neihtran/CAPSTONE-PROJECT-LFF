@@ -3,7 +3,7 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { Fullscreen, KeyRound, MessagesSquare, Users } from "lucide-react";
+import { Fullscreen, KeyRound, MessagesSquare, Users, BarChart2, Gift } from "lucide-react";
 
 import { NavItem, NavItemSkeleton } from "./nav-item";
 
@@ -18,7 +18,7 @@ export function Navigation() {
       icon: Fullscreen,
     },
     {
-      label: "Keys",
+      label: "Khóa Stream",
       href: `/u/${user?.username}/keys`,
       icon: KeyRound,
     },
@@ -28,16 +28,26 @@ export function Navigation() {
       icon: MessagesSquare,
     },
     {
-      label: "Community",
+      label: "Cộng đồng",
       href: `/u/${user?.username}/community`,
       icon: Users,
+    },
+    {
+      label: "Analytics",
+      href: `/u/${user?.username}/analytics`,
+      icon: BarChart2,
+    },
+    {
+      label: "Subscription",
+      href: `/u/${user?.username}/subscription`,
+      icon: Gift,
     },
   ];
 
   if (!user?.username) {
     return (
       <ul className="space-y-2">
-        {[...Array(4)].map((_, i) => (
+        {[...Array(5)].map((_, i) => (
           <NavItemSkeleton key={i} />
         ))}
       </ul>

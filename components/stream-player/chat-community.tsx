@@ -45,7 +45,7 @@ export function ChatCommunity({
   if (isHidden) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted-foreground">Community is disabled</p>
+        <p className="text-sm text-muted-foreground">Cộng đồng đã bị tắt</p>
       </div>
     );
   }
@@ -54,12 +54,12 @@ export function ChatCommunity({
     <div className="p-4">
       <Input
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search community"
+        placeholder="Tìm kiếm cộng đồng"
         className="border-white/10"
       />
       <ScrollArea className="gap-y-2 mt-4">
         <p className="text-center text-sm text-muted-foreground hidden last:block">
-          No results
+          Không có kết quả
         </p>
         {filteredParticipants.map((participant) => (
           <CommunityItem

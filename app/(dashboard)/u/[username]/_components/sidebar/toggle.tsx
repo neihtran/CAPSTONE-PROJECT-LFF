@@ -12,7 +12,7 @@ export function Toggle() {
     (state) => state
   );
 
-  const label = collapsed ? "Expand" : "Collapse";
+  const label = collapsed ? "Mở rộng" : "Thu gọn";
 
   return (
     <>
@@ -27,7 +27,7 @@ export function Toggle() {
       )}
       {!collapsed && (
         <div className="p-3 pl-6 mb-2 hidden lg:flex items-center w-full">
-          <p className="font-semibold text-primary">Dashboard</p>
+          <p className="font-semibold text-primary">Bảng điều khiển</p>
           <Hint label={label} side="right" asChild>
             <Button
               onClick={onCollapse}

@@ -6,6 +6,7 @@ import { getStreamByUserId } from "@/lib/stream-service";
 import { URLCard } from "./_components/url-card";
 import { KeyCard } from "./_components/key-card";
 import { ConnectModal } from "./_components/connect-modal";
+import { EndLiveButton } from "./_components/end-live-button";
 
 export default async function KeysPage() {
   const self = await getSelf();
@@ -18,8 +19,11 @@ export default async function KeysPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Keys & URLs</h1>
-        <ConnectModal />
+        <h1 className="text-2xl font-bold">Khóa & URL</h1>
+        <div className="flex items-center gap-2">
+          <EndLiveButton streamId={stream.id} isLive={stream.isLive} />
+          <ConnectModal />
+        </div>
       </div>
       <div className="space-y-4">
         <URLCard value={stream.serverUrl} />

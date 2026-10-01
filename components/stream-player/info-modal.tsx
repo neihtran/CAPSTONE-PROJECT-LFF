@@ -39,11 +39,11 @@ export function InfoModal({
     startTransition(() => {
       updateStream({ thumbnailUrl: null })
         .then(() => {
-          toast.success("Stream thumbnail updated");
+          toast.success("Đã cập nhật hình thu nhỏ Stream");
           setThumbnailUrl("");
           closeRef?.current?.click();
         })
-        .catch(() => toast.error("Something went wrong"));
+        .catch(() => toast.error("Đã xảy ra lỗi"));
     });
   };
 
@@ -53,10 +53,10 @@ export function InfoModal({
     startTransition(() => {
       updateStream({ name })
         .then(() => {
-          toast.success("Stream updated");
+          toast.success("Đã cập nhật Stream");
           closeRef?.current?.click();
         })
-        .catch(() => toast.error("Something went wrong"));
+        .catch(() => toast.error("Đã xảy ra lỗi"));
     });
   };
 
@@ -68,29 +68,29 @@ export function InfoModal({
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="link" size="sm" className="ml-auto">
-          Edit
+          Chỉnh sửa
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit stream info</DialogTitle>
+          <DialogTitle>Chỉnh sửa thông tin Stream</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-14">
           <div className="space-y-2">
-            <Label>Name</Label>
+            <Label>Tên</Label>
             <Input
               disabled={isPending}
-              placeholder="Stream name"
+              placeholder="Tên Stream"
               onChange={onChange}
               value={name}
             />
           </div>
           <div className="space-y-2">
-            <Label>Thumbnail</Label>
+            <Label>Hình thu nhỏ</Label>
             {thumbnailUrl ? (
               <div className="relative aspect-video rounded-xl overflow-hidden border border-white/10">
                 <div className="absolute top-2 right-2 z-[10]">
-                  <Hint label="Remove thumbnail" asChild side="left">
+                  <Hint label="Xóa hình thu nhỏ" asChild side="left">
                     <Button
                       type="button"
                       disabled={isPending}
@@ -132,11 +132,11 @@ export function InfoModal({
           <div className="flex justify-between">
             <DialogClose ref={closeRef} asChild>
               <Button type="button" variant="ghost">
-                Cancel
+                Hủy
               </Button>
             </DialogClose>
             <Button disabled={isPending} variant="primary" type="submit">
-              Save
+              Lưu
             </Button>
           </div>
         </form>

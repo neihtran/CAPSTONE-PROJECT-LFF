@@ -13,9 +13,9 @@ export function UnblockButton({ userId }: { userId: string }) {
     startTransition(() => {
       onUnblock(userId)
         .then((result) =>
-          toast.success(`User ${result.blocked.username} unblocked`)
+          toast.success(`Đã bỏ chặn ${result.blocked.username}`)
         )
-        .catch(() => toast.error("Something went wrong"));
+        .catch(() => toast.error("Đã xảy ra lỗi"));
     });
   };
 
@@ -27,7 +27,7 @@ export function UnblockButton({ userId }: { userId: string }) {
       size="sm"
       className="text-blue-500 w-full"
     >
-      Unblock
+      Bỏ chặn
     </Button>
   );
 }

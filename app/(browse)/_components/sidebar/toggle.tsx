@@ -11,7 +11,7 @@ import { Hint } from "@/components/hint";
 export function Toggle() {
   const { collapsed, onExpand, onCollapse } = useSidebar((state) => state);
 
-  const label = collapsed ? "Expand" : "Collapse";
+  const label = collapsed ? "Mở rộng" : "Thu gọn";
 
   return (
     <>
@@ -26,7 +26,7 @@ export function Toggle() {
       )}
       {!collapsed && (
         <div className="p-3 pl-6 mb-2 flex items-center w-full">
-          <p className="font-semibold text-primary">For you</p>
+          <p className="font-semibold text-primary">Dành cho bạn</p>
           <Hint label={label} side="right" asChild>
             <Button
               className="h-auto ml-auto p-2"

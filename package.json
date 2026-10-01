@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -26,15 +30,19 @@
     "@radix-ui/react-tooltip": "^1.0.7",
     "@tanstack/react-table": "^8.11.3",
     "@uploadthing/react": "^6.1.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.4",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "date-fns": "^3.0.6",
+    "hls.js": "^1.7.3",
     "jwt-decode": "^4.0.0",
     "livekit-client": "^1.15.5",
     "livekit-server-sdk": "^1.2.7",
     "lucide-react": "^0.294.0",
     "next": "14.0.4",
     "next-themes": "^0.2.1",
+    "openai": "^7.15.0",
     "query-string": "^8.1.0",
     "react": "^18",
     "react-dom": "^18",
@@ -46,6 +54,8 @@
     "uploadthing": "^6.1.1",
     "usehooks-ts": "^2.9.1",
     "uuid": "^9.0.1",
+    "web-push": "^3.6.7",
+    "zod": "^4.6.2",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
@@ -53,12 +63,16 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/uuid": "^9.0.7",
+    "@vitest/ui": "^3.2.7",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
     "postcss": "^8",
     "prisma": "^5.7.0",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5"
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^3.2.7",
+    "vitest-mock-extended": "^2.0.2"
   }
 }

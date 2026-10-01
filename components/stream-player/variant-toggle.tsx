@@ -19,7 +19,7 @@ export function VariantToggle() {
     onChangeVariant(newVariant);
   };
 
-  const label = isChat ? "Community" : "Go back to chat";
+  const label = isChat ? "Cộng đồng" : "Quay lại Chat";
 
   return (
     <Hint label={label} side="left" asChild>

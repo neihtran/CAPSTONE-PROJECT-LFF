@@ -29,9 +29,9 @@ export function Actions({
     startTransition(() => {
       onFollow(hostIdentity)
         .then((data) =>
-          toast.success(`You are now following ${data.following.username}.`)
+          toast.success(`Bạn đã theo dõi ${data.following.username}.`)
         )
-        .catch(() => toast.error("Something went wrong while following."));
+        .catch(() => toast.error("Đã xảy ra lỗi khi theo dõi."));
     });
   };
 
@@ -39,9 +39,9 @@ export function Actions({
     startTransition(() => {
       onUnfollow(hostIdentity)
         .then((data) =>
-          toast.success(`You have unfollowed ${data.following.username}.`)
+          toast.success(`Bạn đã bỏ theo dõi ${data.following.username}.`)
         )
-        .catch(() => toast.error("Something went wrong while unfollowing."));
+        .catch(() => toast.error("Đã xảy ra lỗi khi bỏ theo dõi."));
     });
   };
 
@@ -70,7 +70,7 @@ export function Actions({
       <Heart
         className={cn("h-4 w-4 mr-2", isFollowing ? "fill-white" : "fill-none")}
       />
-      {isFollowing ? "Unfollow" : "Follow"}
+      {isFollowing ? "Bỏ theo dõi" : "Theo dõi"}
     </Button>
   );
 }

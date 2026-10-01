@@ -3,10 +3,24 @@
 import { revalidatePath } from "next/cache";
 
 import { followUser, unfollowUser } from "@/lib/follow-service";
+import { isAppError } from "@/lib/errors";
+import { FollowIdSchema } from "./follow.schema";
 
+/**
+ * Action: follow user.
+ * @param id - UUID của user muốn theo dõi.
+ *
+ * Surface typed error messages từ service (vd: "Bạn đã theo dõi rồi") thay vì
+ * throw "Internal server error" chung chung → UI hiển thị đúng lý do cho user.
+ */
 export const onFollow = async (id: string) => {
+  const parsed = FollowIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "ID không hợp lệ");
+  }
+
   try {
-    const followedUser = await followUser(id);
+    const followedUser = await followUser(parsed.data.id);
 
     revalidatePath("/");
 
@@ -16,13 +30,25 @@ export const onFollow = async (id: string) => {
 
     return followedUser;
   } catch (error) {
-    throw new Error("Internal server error");
+    if (isAppError(error)) {
+      throw new Error(error.message);
+    }
+    throw new Error("Đã xảy ra lỗi, vui lòng thử lại sau");
   }
 };
 
+/**
+ * Action: bỏ theo dõi user.
+ * @param id - UUID của user muốn bỏ theo dõi.
+ */
 export const onUnfollow = async (id: string) => {
+  const parsed = FollowIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "ID không hợp lệ");
+  }
+
   try {
-    const unfollowedUser = await unfollowUser(id);
+    const unfollowedUser = await unfollowUser(parsed.data.id);
 
     revalidatePath("/");
 
@@ -32,6 +58,9 @@ export const onUnfollow = async (id: string) => {
 
     return unfollowedUser;
   } catch (error) {
-    throw new Error("Internal server error");
+    if (isAppError(error)) {
+      throw new Error(error.message);
+    }
+    throw new Error("Đã xảy ra lỗi, vui lòng thử lại sau");
   }
 };

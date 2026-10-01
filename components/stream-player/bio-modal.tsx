@@ -27,10 +27,10 @@ export function BioModal({ initialValue }: { initialValue: string | null }) {
     startTransition(() => {
       updateUser({ bio: value })
         .then(() => {
-          toast.success("User bio updated");
+          toast.success("Đã cập nhật tiểu sử người dùng");
           closeRef.current?.click();
         })
-        .catch(() => toast.error("Failed to update bio"));
+        .catch(() => toast.error("Cập nhật tiểu sử thất bại"));
     });
   };
 
@@ -38,16 +38,16 @@ export function BioModal({ initialValue }: { initialValue: string | null }) {
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="link" size="sm" className="ml-auto">
-          Edit
+          Chỉnh sửa
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit user bio</DialogTitle>
+          <DialogTitle>Chỉnh sửa tiểu sử</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <Textarea
-            placeholder="User bio"
+            placeholder="Tiểu sử người dùng"
             onChange={(e) => setValue(e.target.value)}
             value={value}
             disabled={isPending}
@@ -56,11 +56,11 @@ export function BioModal({ initialValue }: { initialValue: string | null }) {
           <div className="flex justify-between">
             <DialogClose ref={closeRef} asChild>
               <Button type="button" variant="ghost">
-                Cancel
+                Hủy
               </Button>
             </DialogClose>
             <Button disabled={isPending} type="submit" variant="primary">
-              Save
+              Lưu
             </Button>
           </div>
         </form>

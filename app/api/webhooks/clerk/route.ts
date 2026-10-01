@@ -52,7 +52,29 @@ export async function POST(req: Request) {
 
   const eventType = evt.type;
 
+  // ============================================================
+  // IDEMPOTENCY CHECK
+  // Clerk có thể gửi lại webhook (retry) khi response trước đó không 2xx.
+  // Để tránh tạo trùng User hoặc update/delete không tồn tại,
+  // ta luôn kiểm tra sự tồn tại của User trước khi thực hiện thao tác.
+  // ============================================================
+
   if (eventType === "user.created") {
+    // Idempotency: bỏ qua nếu user đã tồn tại (do Clerk retry hoặc webhook trùng).
+    // Trả 200 để Clerk ngừng retry — KHÔNG throw error để tránh retry vô tận.
+    const existingUser = await db.user.findUnique({
+      where: {
+        externalUserId: payload.data.id,
+      },
+    });
+
+    if (existingUser) {
+      console.log(
+        `[clerk-webhook] user.created skipped — user already exists with externalUserId=${payload.data.id}`
+      );
+      return new Response("User already exists, skipped", { status: 200 });
+    }
+
     await db.user.create({
       data: {
         externalUserId: payload.data.id,
@@ -68,6 +90,21 @@ export async function POST(req: Request) {
   }
 
   if (eventType === "user.updated") {
+    // Idempotency: nếu user chưa tồn tại thì không update (tránh lỗi Prisma P2025).
+    // Trả 200 để Clerk không retry — chờ user.created xử lý trước.
+    const existingUser = await db.user.findUnique({
+      where: {
+        externalUserId: payload.data.id,
+      },
+    });
+
+    if (!existingUser) {
+      console.warn(
+        `[clerk-webhook] user.updated skipped — user not found with externalUserId=${payload.data.id}`
+      );
+      return new Response("User not found, skipped", { status: 200 });
+    }
+
     await db.user.update({
       where: {
         externalUserId: payload.data.id,
@@ -80,6 +117,21 @@ export async function POST(req: Request) {
   }
 
   if (eventType === "user.deleted") {
+    // Idempotency: nếu user đã bị xóa từ lần retry trước thì bỏ qua.
+    // resetIngresses cũng idempotent (nếu không có ingress/room thì listIngress/listRooms trả rỗng).
+    const existingUser = await db.user.findUnique({
+      where: {
+        externalUserId: payload.data.id,
+      },
+    });
+
+    if (!existingUser) {
+      console.log(
+        `[clerk-webhook] user.deleted skipped — user not found with externalUserId=${payload.data.id}`
+      );
+      return new Response("User not found, skipped", { status: 200 });
+    }
+
     await resetIngresses(payload.data.id);
 
     await db.user.delete({

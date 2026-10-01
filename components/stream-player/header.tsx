@@ -58,7 +58,7 @@ export function Header({
               <UserIcon className="h-4 w-4" />
               <p>
                 {participantCount}{" "}
-                {participantCount === 1 ? "viewer" : "viewers"}
+                {participantCount === 1 ? "người xem" : "người xem"}
               </p>
             </div>
           ) : (

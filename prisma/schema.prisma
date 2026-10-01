@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 datasource db {
   provider     = "mysql"
   url          = env("DATABASE_URL")
@@ -24,8 +27,60 @@ model User {
 
   stream Stream?
 
+  // Chat messages user đã gửi (foreign key từ ChatMessage).
+  chatMessages ChatMessage[]
+
+  // Moderation — người dùng là moderator của streams nào.
+  // Lưu ý: Moderator = được chủ stream giao quyền mod stream của họ.
+  moderating StreamModerator[] @relation("Moderating")
+
+  // Moderation actions: người này đã bị timeout/ban bởi stream nào.
+  modActionsAgainst ModerationAction[] @relation("ActionTarget")
+
+  // Moderation actions: người này đã thực hiện action nào (timeout/ban).
+  modActionsBy ModerationAction[] @relation("ActionActor")
+
+  // Reports do người này gửi (người tố cáo).
+  reportsSubmitted MessageReport[] @relation("Reporter")
+
+  // Reports về người này (bị tố cáo).
+  reportsAgainst MessageReport[] @relation("ReportedUser")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // FULLTEXT index cho search — InnoDB hỗ trợ từ MySQL 5.6+.
+  // Kết hợp với stream.name FULLTEXT để search theo cả tên user lẫn tên stream.
+  @@fulltext([username, bio])
+
+  // Clips do user tạo.
+  clipsCreated Clip[] @relation("ClipCreator")
+
+  // Notifications.
+  notificationsReceived Notification[] @relation("NotificationsReceived")
+  notificationsSent Notification[] @relation("NotificationsSent")
+  notificationPreference NotificationPreference?
+
+  // Subscriptions (Sprint 7).
+  subscriptionTiers SubscriptionTier[] @relation("StreamerTiers")
+  subscriptionsAsSubscriber Subscription[] @relation("Subscriber")
+  subscriptionsAsStreamer Subscription[] @relation("StreamerSubs")
+  donationsSent Donation[] @relation("Donor")
+  donationsReceived Donation[] @relation("Recipient")
+  streamViews StreamView[]
+
+  // Sprint 8: emotes + alerts.
+  channelEmotes Emote[] @relation("ChannelEmotes")
+  alertConfig StreamAlert? @relation("StreamerAlerts")
+
+  // Sprint 9: ranks.
+  viewerRank ViewerRank? @relation("ViewerRank")
+  streamerLevel StreamerLevel? @relation("StreamerLevel")
+
+  // Sprint 10-11: events + push.
+  events StreamEvent[] @relation("StreamerEvents")
+  eventContributions EventContribution[] @relation("UserEventContributions")
+  pushSubscriptions PushSubscription[] @relation("PushSubscriptions")
 }
 
 model Stream {
@@ -45,12 +100,127 @@ model Stream {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Lịch sử chat messages của stream — cascade delete khi stream bị xóa.
+  chatMessages ChatMessage[]
+
+  // Categories và tags của stream (N-N).
+  categories StreamCategory[]
+  tags       StreamTag[]
+
+  // Moderation: chủ stream có thể giao quyền cho user khác làm moderator.
+  moderators StreamModerator[]
+  // Lịch sử moderation actions (timeout/ban/delete) trên stream này.
+  modActions ModerationAction[]
+  // Banned words (auto-mod regex) của stream này.
+  bannedWords BannedWord[]
+
+  // Reports về user trên stream này (do viewers gửi).
+  receivedReports MessageReport[] @relation("StreamReports")
+
+  // Sprint 7: analytics + monetization.
+  sessions StreamSession[]
+  donations Donation[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([ingressId])
+  @@index([isLive])
   @@fulltext([name])
+
+  // Clips của stream.
+  clips Clip[]
+}
+
+// ChatMessage — lưu 1 tin nhắn chat đã được gửi thành công qua LiveKit DataChannel.
+//
+// Mục đích:
+//   - Lưu lịch sử chat vĩnh viễn (LiveKit DataChannel mất khi client disconnect).
+//   - Khi streamer tắt/bật chat, lịch sử KHÔNG bị mất.
+//   - Khi viewer refresh trang, lịch sử được load lại từ DB.
+//
+// Flow:
+//   1. Viewer gọi POST /api/chat/moderate (OpenAI check + isChatEnabled check).
+//   2. Moderation OK → server persist ChatMessage vào DB.
+//   3. Đồng thời Viewer gọi `send()` để broadcast qua LiveKit DataChannel cho
+//      real-time UI của các clients đang online.
+//   4. Khi viewer/host navigate hoặc refresh → server load lịch sử từ DB.
+//
+// Lưu trên `streamId` để query kèm `userId` (broadcaster) để filter chính xác.
+model ChatMessage {
+  id String @id @default(uuid())
+
+  text String @db.Text
+
+  // Foreign key tới User (người gửi).
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Foreign key tới Stream (kênh mà tin nhắn được gửi).
+  streamId String
+  stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  // Timestamp để sort và filter.
+  sentAt DateTime @default(now())
+
+  // Nếu message bị xóa bởi mod → soft delete để giữ audit trail + report context.
+  deletedAt DateTime?
+  deletedBy String?
+
+  // Reports liên quan đến message này.
+  reports MessageReport[]
+
+  @@index([streamId, sentAt])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// MessageReport — viewer báo cáo user/message vi phạm.
+//
+// Lifecycle:
+//   - PENDING: mới submit, mod chưa xem.
+//   - RESOLVED: mod đã xử lý (timeout/ban/delete) — đóng report.
+//   - DISMISSED: mod thấy không vi phạm, bỏ qua.
+//
+// Unique: 1 user chỉ report 1 lần cho 1 message → tránh spam.
+// Nếu user đổi ý → update existing record thay vì tạo mới.
+// ──────────────────────────────────────────────────────────────────────────
+model MessageReport {
+  id        String   @id @default(uuid())
+  status    String   @default("PENDING") // PENDING | RESOLVED | DISMISSED
+
+  // Stream mà report này thuộc về.
+  streamId  String
+  stream    Stream  @relation("StreamReports", fields: [streamId], references: [id], onDelete: Cascade)
+
+  // Message bị report (optional — có thể report user chứ không phải message).
+  messageId String?
+  message   ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  // User bị report.
+  reportedUserId String
+  reportedUser   User   @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  // User gửi report.
+  reporterUserId String
+  reporterUser   User   @relation("Reporter", fields: [reporterUserId], references: [id], onDelete: Cascade)
+
+  // Lý do (text do reporter nhập, max 500 chars).
+  reason    String  @db.Text
+
+  // Mod xử lý — sau khi đổi status thì lưu user đã xử lý.
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 1 user chỉ report 1 lần cho cùng message.
+  @@unique([messageId, reporterUserId])
+  @@index([streamId, status, createdAt])
+  @@index([reportedUserId])
+  @@index([reporterUserId])
 }
 
 model Follow {
@@ -80,4 +250,761 @@ model Block {
   @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Categories — game/thể loại mà stream thuộc về (vd: "Gaming", "Music").
+//
+// Slug dùng để URL-friendly (vd: /browse/gaming). unique → 1 category per slug.
+//
+// Quan hệ: Stream ↔ Category là N-N (1 stream có thể thuộc nhiều categories,
+// vd: "League of Legends" thuộc "Gaming" + "Esports").
+// ──────────────────────────────────────────────────────────────────────────
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?  @db.Text
+  // Box art / icon cho category — optional, dùng trên trang /browse/[category].
+  imageUrl    String?  @db.Text
+
+  streams StreamCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Tags — free-form labels (vd: "beginner-friendly", "high-energy", "vietnamese").
+//
+// Khác với Category (cố định, admin quản lý) → Tags user-created, dùng để
+// discovery chi tiết hơn (vd: game cụ thể, mood, skill level).
+//
+// Quan hệ: Stream ↔ Tag là N-N.
+// ──────────────────────────────────────────────────────────────────────────
+model Tag {
+  id    String @id @default(uuid())
+  // Slug = lowercase của name, dùng cho URL và unique lookup.
+  // vd: "league-of-legends" → id 1.
+  name  String @unique
+  slug  String @unique
+
+  streams StreamTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// Bảng trung gian: Stream ↔ Category.
+model StreamCategory {
+  streamId   String
+  categoryId String
+
+  stream   Stream   @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([streamId, categoryId])
+  @@index([categoryId])
+  @@index([streamId])
+}
+
+// Bảng trung gian: Stream ↔ Tag.
+model StreamTag {
+  streamId String
+  tagId    String
+
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([streamId, tagId])
+  @@index([tagId])
+  @@index([streamId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamModerator — stream ↔ user N-N, định nghĩa ai được làm moderator
+// của stream nào.
+//
+// Moderator có quyền:
+//   - Timeout (cấm chat N phút)
+//   - Ban (cấm vĩnh viễn khỏi stream này)
+//   - Xóa chat messages
+//   - Không có quyền end stream / unban (chỉ streamer mới làm được).
+//
+// Đặc quyền theo stream: mod của stream A KHÔNG tự động là mod của stream B.
+// ──────────────────────────────────────────────────────────────────────────
+model StreamModerator {
+  id        String   @id @default(uuid())
+  streamId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  user   User   @relation("Moderating", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([streamId, userId])
+  @@index([streamId])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// ModerationAction — log mọi hành động mod: timeout, ban, unban, delete message.
+//
+// Lưu log để:
+//   - Streamer xem lịch sử khi user khiếu nại.
+//   - Moderators check ai đã làm gì (audit).
+//   - Tự động cleanup sau N ngày nếu cần (cronjob tương lai).
+//
+// Type:
+//   - TIMEOUT: cấm chat N phút (còn expiresAt → auto unblock khi hết hạn).
+//   - BAN: cấm vĩnh viễn.
+//   - UNBAN: gỡ ban (actor thường là streamer).
+//   - DELETE_MESSAGE: xóa 1 chat message (giữ messageId để trace).
+// ──────────────────────────────────────────────────────────────────────────
+model ModerationAction {
+  id     String @id @default(uuid())
+  type   String // "TIMEOUT" | "BAN" | "UNBAN" | "DELETE_MESSAGE"
+
+  // Stream mà action áp dụng.
+  streamId String
+  stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  // Ai bị action (target user).
+  targetUserId String
+  targetUser   User   @relation("ActionTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  // Ai thực hiện (actor: streamer hoặc moderator).
+  actorUserId String
+  actorUser   User   @relation("ActionActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  // Cho TIMEOUT — thời điểm hết timeout. Null = không timeout (hoặc vĩnh viễn).
+  expiresAt DateTime?
+
+  // Lý do (optional, text).
+  reason String? @db.Text
+
+  // Cho DELETE_MESSAGE — ID của message đã xóa.
+  messageId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([streamId, createdAt])
+  @@index([targetUserId])
+  @@index([actorUserId])
+  @@index([expiresAt]) // để query tìm TIMEOUT đã expired
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// BannedWord — danh sách regex / string banned của từng stream cho AutoMod.
+//
+// Khi message gửi qua /api/chat/moderate:
+//   1. Check BannedWord của stream.
+//   2. Nếu match → reject, trả về 403.
+//   3. Nếu không match → lưu ChatMessage + broadcast LiveKit.
+//
+// `pattern` là plain text hoặc regex (vd: "\\bslur\\w*").
+// Action nào khi match: REJECT (block), hoặc FILTER (mask thành ***).
+// ──────────────────────────────────────────────────────────────────────────
+model BannedWord {
+  id       String @id @default(uuid())
+  streamId String
+  stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  // Pattern: plain text hoặc regex.
+  pattern  String  @db.Text
+  // "REJECT" = block message hoàn toàn, "FILTER" = mask bằng *.
+  action   String  @default("REJECT")
+  // Optional ghi chú (vd: "từ ngữ thô", "tên riêng cấm").
+  reason   String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([streamId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Clip — viewer tạo clip từ live stream.
+//
+// Clip gồm: videoUrl (HLS URL), thumbnail, title, viewCount.
+// Trimming: startTime/endTime để crop đoạn clip.
+// Creator: ai đã tạo clip này.
+//
+// Lifecycle:
+//   - Tạo: viewer gửi title + startTime/endTime (nếu có).
+//   - Serve: HLS stream từ LiveKit / transcoded video.
+//   - Delete: streamer hoặc creator có thể xóa.
+//
+// Unique: videoUrl duy nhất per clip.
+// ──────────────────────────────────────────────────────────────────────────
+model Clip {
+  id        String   @id @default(uuid())
+  title     String   @db.VarChar(200)
+  thumbnail String?  @db.VarChar(500)
+  videoUrl  String   @db.VarChar(500)
+  viewCount Int      @default(0)
+  isFeatured Boolean @default(false)
+
+  // Thời điểm tạo clip (trong stream) — đơn vị: giây.
+  startTime Int @default(0)
+  endTime   Int @default(60)
+
+  // Relations.
+  streamId String
+  stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   User @relation("ClipCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([streamId, createdAt])
+  @@index([creatorId])
+  @@index([isFeatured])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Notification — thông báo cho user (follow, live, clip, ...).
+//
+// Types:
+//   - FOLLOW: someone follows you.
+//   - LIVE: streamer you follow went live.
+//   - CLIP: someone created a clip from your stream.
+//   - MODERATION: you got banned/timeouted from a stream (for streamer dashboard).
+//   - SYSTEM: platform announcement (admin only).
+//
+// Status: UNREAD → READ.
+// Mỗi user có 1 NotificationPreference (per-type enable/disable).
+// ──────────────────────────────────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   // FOLLOW | LIVE | CLIP | MODERATION | SYSTEM
+  status    String   @default("UNREAD") // UNREAD | READ
+  title     String   @db.VarChar(200)
+  body      String   @db.Text
+  linkUrl   String?  @db.VarChar(500) // relative path to navigate when clicked
+
+  // Optional metadata (JSON-encoded: {streamId, clipId, ...}).
+  metadata  String?  @db.Text
+
+  recipientId String
+  recipient   User   @relation("NotificationsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  // Người tạo notification (vd: who followed).
+  actorId    String?
+  actor      User?   @relation("NotificationsSent", fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  @@index([recipientId, status, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([actorId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// NotificationPreference — user tùy chỉnh nhận notification nào.
+//
+// 1 row per user, JSON fields encode enabled per type.
+// Mặc định: tất cả đều ON.
+// ──────────────────────────────────────────────────────────────────────────
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // JSON strings per preference (true = enable, false = disable).
+  // Mặc định: tất cả đều bật.
+  onFollow  Boolean  @default(true)
+  onLive    Boolean  @default(true)
+  onClip    Boolean  @default(true)
+  onModeration Boolean @default(true)
+  onSystem  Boolean  @default(true)
+
+  // Email notification preference (global toggle).
+  emailEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SubscriptionTier — gói subscribe cho 1 streamer (T1/T2/T3).
+//
+// Streamer tự định nghĩa tier: tên, giá, màu sắc, mô tả perks.
+// Mỗi tier có 1 "level" (1, 2, 3) — tier cao hơn có perks cao hơn (badge đẹp,
+// emote riêng, etc.).
+//
+// Tier là 1-N với User (streamer tạo). User tạo tối đa N tier (vd: 4).
+// ──────────────────────────────────────────────────────────────────────────
+model SubscriptionTier {
+  id    String @id @default(uuid())
+  // Tên tier (vd: "Đồng", "Bạc", "Vàng"). Unique per streamer.
+  name  String @db.VarChar(50)
+  // Mô tả ngắn (vd: "Emote riêng + Badge vàng").
+  description String? @db.Text
+  // Giá (USD cents → avoid float issues, vd: 499 = $4.99).
+  priceCents Int
+  // Level 1/2/3 — tier cao = perks cao.
+  level Int @default(1)
+  // Màu badge hiển thị cạnh username (hex).
+  color String  @default("#9146FF") @db.VarChar(7)
+
+  streamerId String
+  streamer   User @relation("StreamerTiers", fields: [streamerId], references: [id], onDelete: Cascade)
+
+  // Status: ACTIVE | DISABLED (giữ row để analytics cũ).
+  status String @default("ACTIVE")
+
+  // Subscriptions với tier này.
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([streamerId, name])
+  @@unique([streamerId, level])
+  @@index([streamerId, status])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Subscription — user subscribe 1 streamer theo tier.
+//
+// MVP (stub): thanh toán qua mock service (lib/payment-stub.ts). Production sẽ
+// tích hợp Stripe subscription qua webhook.
+//
+// Status:
+//   - ACTIVE: đang sub, có hiệu lực.
+//   - EXPIRED: đã hết hạn, không auto-renew.
+//   - CANCELED: user cancel, còn hiệu lực đến currentPeriodEnd.
+//   - PAUSED: tạm dừng (chưa dùng).
+//
+// Mỗi user chỉ sub 1 tier active tại 1 streamer. Re-subscribe = update row.
+// ──────────────────────────────────────────────────────────────────────────
+model Subscription {
+  id        String   @id @default(uuid())
+  status    String   @default("ACTIVE") // ACTIVE | EXPIRED | CANCELED | PAUSED
+
+  // Subscriber (người trả tiền).
+  subscriberId String
+  subscriber   User   @relation("Subscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  // Streamer được sub.
+  streamerId   String
+  streamer     User   @relation("StreamerSubs", fields: [streamerId], references: [id], onDelete: Cascade)
+
+  // Tier được sub.
+  tierId       String
+  tier         SubscriptionTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+
+  // Mock payment ID (lib/payment-stub trả về).
+  paymentRef   String? @db.VarChar(100)
+
+  // Thời điểm bắt đầu sub.
+  startedAt    DateTime  @default(now())
+  // Ngày hết hạn hiện tại.
+  currentPeriodEnd DateTime
+  // Thời điểm cancel (nếu CANCELED).
+  canceledAt   DateTime?
+
+  // Stats.
+  totalCentsPaid Int @default(0) // Tổng đã trả (để analytics).
+  // Số tháng đã sub (cộng dồn, vd: 1 → 2 → 3...).
+  monthsActive Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subscriberId, status])
+  @@index([streamerId, status])
+  @@index([currentPeriodEnd])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Donation — 1 lần tip (không recurring).
+//
+// Khác subscription: 1 lần, không auto-renew. Số tiền do người gửi chọn.
+// Có thể kèm message hiển thị trên overlay (donation-message).
+// ──────────────────────────────────────────────────────────────────────────
+model Donation {
+  id          String   @id @default(uuid())
+  // Số tiền (cents).
+  amountCents Int
+  // Message kèm theo (optional).
+  message     String?  @db.VarChar(500)
+
+  // Người gửi.
+  donorId     String?
+  donor       User?    @relation("Donor", fields: [donorId], references: [id], onDelete: SetNull)
+
+  // Người nhận (streamer).
+  recipientId String
+  recipient   User     @relation("Recipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  // Stream trong lúc donate (optional, có thể donate cho streamer khi offline).
+  streamId    String?
+  stream      Stream?  @relation(fields: [streamId], references: [id], onDelete: SetNull)
+
+  // Mock payment ref.
+  paymentRef  String?  @db.VarChar(100)
+
+  // Status: COMPLETED (default) | REFUNDED | PENDING.
+  status      String   @default("COMPLETED")
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+  @@index([donorId, createdAt])
+  @@index([streamId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamSession — 1 lần stream (từ lúc go live đến end).
+//
+// Mỗi session = 1 record để tính analytics (peak viewers, duration, revenue).
+// Created on ingress_started, updated on ingress_ended.
+// ──────────────────────────────────────────────────────────────────────────
+model StreamSession {
+  id        String   @id @default(uuid())
+  streamId  String
+  stream    Stream   @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  // Stats.
+  peakViewers Int     @default(0)
+  totalViews  Int     @default(0)
+  uniqueViewers Int   @default(0)
+  // Tổng donation thu được trong session (cents).
+  donationCents Int   @default(0)
+  // Số subs mới trong session.
+  newSubscribers Int  @default(0)
+
+  // Tự tính duration = endedAt - startedAt (seconds).
+  durationSec Int?
+
+  views StreamView[]
+
+  @@index([streamId, startedAt])
+  @@index([startedAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamView — log 1 view event (cho analytics).
+//
+// Insert on viewer-join (nếu logged-in). Update on viewer-leave với duration.
+// Unique per (userId, sessionId) → mỗi viewer chỉ count 1 unique view per session.
+// ──────────────────────────────────────────────────────────────────────────
+model StreamView {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  durationSec Int?
+
+  @@unique([sessionId, userId])
+  @@index([sessionId, joinedAt])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Emote — emoji/sticker có thể dùng trong chat.
+//
+// Có 2 loại:
+//   - GLOBAL: dùng được ở mọi stream.
+//   - CHANNEL: chỉ dùng được trong channel của streamer sở hữu.
+//
+// Upload: streamer upload ảnh (PNG/GIF/WebP ≤ 64KB).
+// Code: shortcode dùng trong chat (vd: "KEKW", "pog", "ha").
+// ──────────────────────────────────────────────────────────────────────────
+model Emote {
+  id    String @id @default(uuid())
+  // Shortcode hiển thị trong chat (lowercase, unique per scope).
+  // VD: "KEKW", "pog", "pogchamp".
+  code  String @db.VarChar(50)
+
+  // GLOBAL = platform-wide, CHANNEL = chỉ owner được dùng.
+  scope String @default("GLOBAL") // "GLOBAL" | "CHANNEL"
+
+  // URL ảnh (UploadThing).
+  imageUrl String @db.VarChar(500)
+
+  // Kích thước hiển thị mặc định (px).
+  width  Int @default(64)
+  height Int @default(64)
+
+  // File size (bytes) — giới hạn ≤ 64KB.
+  fileSizeBytes Int @default(0)
+
+  // Relations.
+  // CHANNEL emote thuộc về 1 streamer.
+  channelId String? // null = global
+  channel   User?   @relation("ChannelEmotes", fields: [channelId], references: [id], onDelete: Cascade)
+
+  // Trạng thái.
+  status String @default("ACTIVE") // "ACTIVE" | "DISABLED"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([code, channelId]) // code unique per channel
+  @@index([scope, status])
+  @@index([channelId, status])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamAlert — cấu hình alert cho 1 streamer.
+//
+// Alert preferences: bật/tắt alert type nào, chọn animation style.
+// ──────────────────────────────────────────────────────────────────────────
+model StreamAlert {
+  id        String @id @default(uuid())
+
+  streamerId String @unique
+  streamer   User   @relation("StreamerAlerts", fields: [streamerId], references: [id], onDelete: Cascade)
+
+  // Bật/tắt từng loại alert.
+  showFollowAlert    Boolean @default(true)
+  showSubscribeAlert Boolean @default(true)
+  showDonationAlert Boolean @default(true)
+  showRaidAlert     Boolean @default(false) // TBD
+  showClipAlert     Boolean @default(true)
+
+  // Animation style.
+  alertStyle String @default("slide-up") // "slide-up" | "pop" | "fade" | "bounce"
+
+  // Duration hiển thị (ms).
+  alertDurationMs Int @default(5000)
+
+  // Alert sound.
+  alertSoundEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamEvent — sự kiện platform-wide hoặc per-streamer
+// (competition, challenge, milestone).
+//
+// Ví dụ:
+//   - STREAMER_MILESTONE: streamer đạt 1000 followers.
+//   - MONTHLY_COMPETITION: ranking event theo tháng.
+//   - CHALLENGE: streamer tham gia challenge.
+// ──────────────────────────────────────────────────────────────────────────
+model StreamEvent {
+  id    String @id @default(uuid())
+  type  String // DONATION_GOAL | SUBSCRIPTION_MILESTONE | VIEWER_MILESTONE | FOLLOW_GOAL | CUSTOM | STREAMER_MILESTONE | MONTHLY_COMPETITION | CHALLENGE
+
+  // Tiêu đề + mô tả hiển thị.
+  title String @db.VarChar(200)
+  body  String @db.Text
+
+  // URL đến trang chi tiết (null = không có).
+  linkUrl String? @db.VarChar(500)
+
+  // Nếu event áp dụng cho tất cả → streamerId = null.
+  streamerId String?
+  streamer   User?  @relation("StreamerEvents", fields: [streamerId], references: [id], onDelete: Cascade)
+
+  // Target value (cents / count) cho goal-based events.
+  targetValue Int @default(0)
+  // Current progress value.
+  currentValue Int @default(0)
+
+  // Reward.
+  rewardValueCents Int @default(0)
+  rewardDescription String?
+
+  // Thời gian.
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  // Priority: cao hơn → hiển thị trước.
+  priority Int @default(0)
+
+  // Trạng thái.
+  status String @default("ACTIVE") // ACTIVE | COMPLETED | EXPIRED | CANCELLED | ENDED
+
+  // Per-user contribution tracking.
+  contributions EventContribution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, status])
+  @@index([streamerId, status])
+  @@index([status, endsAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// ViewerRank — tổng wealth value của 1 viewer trên toàn platform.
+//
+// Wealth value:
+//   - Cộng khi viewer donate diamond/gift → 1:1 với donation.amountCents.
+//   - KHÔNG giảm (cumulative, permanent).
+//
+// Tier (xem RANK_TIERS):
+//   - PEASANT (0), KNIGHT (1K), EARL (5K), DUKE (20K), KING (100K), EMPEROR (300K).
+//
+// StreamerId = null → global rank (tổng đã donate cho tất cả streamers).
+// ──────────────────────────────────────────────────────────────────────────
+model ViewerRank {
+  id    String @id @default(uuid())
+  userId String @unique
+  user   User   @relation("ViewerRank", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tổng wealth value (số cent đã donate cho streamers).
+  // 1 cent = 1 wealth point.
+  wealthValue Int @default(0)
+
+  // Current tier cache (recalculated on update).
+  currentTier  String @default("PEASANT") // RANK_TIER value
+
+  // Per-streamer rank tracking (viewer ↔ streamer).
+  // 1 record per (viewer, streamer) — tính riêng cho mỗi fan club.
+  perChannelRank ViewerChannelRank[]
+
+  // Tổng donation count.
+  donationCount Int @default(0)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// ViewerChannelRank — rank của 1 viewer trong 1 channel cụ thể.
+//
+// Dùng cho "fan club ranking" trong chat của streamer đó.
+// Tính riêng cho từng kênh → viewer có thể level ở kênh A
+// và still PEASANT ở kênh B.
+// ──────────────────────────────────────────────────────────────────────────
+model ViewerChannelRank {
+  id    String @id @default(uuid())
+  viewerId String
+  viewerRank ViewerRank @relation(fields: [viewerId], references: [userId], onDelete: Cascade)
+
+  streamerId String
+
+  // Wealth value đã donate riêng cho streamer này.
+  channelWealthValue Int @default(0)
+
+  // Tier riêng cho channel (PEASANT -> EMPEROR).
+  currentTier String @default("PEASANT")
+
+  // Biểu tượng đặc biệt trong chat (lucky clover → badge riêng).
+  luckyCloverCount Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([viewerId, streamerId])
+  @@index([streamerId, currentTier])
+  @@index([channelWealthValue])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// StreamerLevel — cấp độ của streamer.
+//
+// Tính từ:
+//   - Total streaming hours.
+//   - Followers count.
+//   - Total unique viewers.
+//   - Total subscription revenue.
+//
+// XP = (hours * 100) + (followers * 10) + (uniqueViewers * 5) + (revenue_cents / 10).
+//
+// Tier (xem STREAMER_LEVELS):
+//   - NEW (0-999 XP), RISING (1K-5K), POPULAR (5K-25K),
+//     FAMOUS (25K-100K), STAR (100K-500K), ICON (500K+).
+// ──────────────────────────────────────────────────────────────────────────
+model StreamerLevel {
+  id    String @id @default(uuid())
+  userId String @unique
+  user   User   @relation("StreamerLevel", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tổng hours streamed (cộng dồn từ sessions).
+  totalHours Float @default(0)
+
+  // XP hiện tại.
+  xp         Int    @default(0)
+  currentLevel String @default("NEW")
+
+  // Tổng subscription revenue (cents).
+  totalRevenueCents Int @default(0)
+
+  // Total unique viewers.
+  totalUniqueViewers Int @default(0)
+
+  // Milestone (max level achieved cho leaderboard).
+  peakLevel String @default("NEW")
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// EventContribution — track per-user contributions cho mỗi event.
+//
+// Dùng cho:
+//   - Top contributors leaderboard.
+//   - Royal badge reward tracking.
+// ──────────────────────────────────────────────────────────────────────────
+model EventContribution {
+  id    String @id @default(uuid())
+  eventId String
+  event   StreamEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("UserEventContributions", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Amount (cents hoặc count tùy type).
+  amount Int
+
+  // Source: donation | subscription | follow | manual.
+  source String
+
+  createdAt DateTime @default(now())
+
+  @@index([eventId, amount])
+  @@index([userId, eventId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PushSubscription — lưu Web Push subscription của user.
+// ──────────────────────────────────────────────────────────────────────────
+model PushSubscription {
+  id    String @id @default(uuid())
+  userId String
+  user   User   @relation("PushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique @db.VarChar(500)
+  p256dh   String @db.Text
+  auth     String @db.Text
+
+  // Browser + OS for stats.
+  userAgent String?
+
+  // Notification preferences.
+  // JSON: { liveNotifications: true, donationAlerts: true, chatMentions: true }
+  preferences Json?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

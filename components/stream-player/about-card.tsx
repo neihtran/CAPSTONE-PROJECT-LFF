@@ -22,14 +22,14 @@ export function AboutCard({
   const hostAsViewer = `host-${hostIdentity}`;
   const isHost = viewerIdentity === hostAsViewer;
 
-  const followedByLabel = followedByCount === 1 ? "Follower" : "Followers";
+  const followedByLabel = followedByCount === 1 ? "người theo dõi" : "người theo dõi";
 
   return (
     <div className="px-4">
       <div className="group rounded-xl bg-background p-6 lg:p-10 flex flex-col gap-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-x-2 font-semibold text-lg lg:text-2xl">
-            About {hostName}
+            Về {hostName}
             <VerifiedMark />
           </div>
           {isHost && <BioModal initialValue={bio} />}
@@ -39,7 +39,7 @@ export function AboutCard({
           {followedByLabel}
         </div>
         <p className="text-sm">
-          {bio || "This user prefers to keep an air of mystery about them."}
+          {bio || "Người dùng này thích giữ bí mật về bản thân."}
         </p>
       </div>
     </div>

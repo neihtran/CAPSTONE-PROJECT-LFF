@@ -6,8 +6,28 @@ import { AccessToken } from "livekit-server-sdk";
 import { getSelf } from "@/lib/auth-service";
 import { getUserById } from "@/lib/user-service";
 import { isBlockedByUser } from "@/lib/block-service";
+import { CreateViewerTokenSchema } from "./token.schema";
 
+/**
+ * Action: tạo LiveKit JWT cho viewer tham gia room của host.
+ *
+ * Flow:
+ * - Nếu user đã đăng nhập (qua Clerk) → dùng thông tin user.
+ * - Nếu là guest → sinh username ngẫu nhiên.
+ * - Nếu host chặn viewer → từ chối.
+ *
+ * @param hostIdentity - UUID của streamer mà viewer muốn tham gia.
+ * @returns JWT string hợp lệ để LiveKit React component kết nối.
+ */
 export const createViewerToken = async (hostIdentity: string) => {
+  // 1) Validate input — chặn query DB / tạo token nếu input sai.
+  const parsed = CreateViewerTokenSchema.safeParse({ hostIdentity });
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues[0]?.message ?? "ID streamer không hợp lệ"
+    );
+  }
+
   let self;
 
   try {
@@ -18,7 +38,7 @@ export const createViewerToken = async (hostIdentity: string) => {
     self = { id, username };
   }
 
-  const host = await getUserById(hostIdentity);
+  const host = await getUserById(parsed.data.hostIdentity);
 
   if (!host) {
     throw new Error("User not found");

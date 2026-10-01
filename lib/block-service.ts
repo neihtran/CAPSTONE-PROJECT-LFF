@@ -1,5 +1,12 @@
 import { db } from "@/lib/db";
 import { getSelf } from "@/lib/auth-service";
+import { enforceRateLimit } from "@/lib/ratelimit";
+import {
+  AlreadyBlockedError,
+  NotBlockedError,
+  SelfActionError,
+  UserNotFoundError,
+} from "@/lib/errors";
 
 export const isBlockedByUser = async (id: string) => {
   try {
@@ -31,13 +38,16 @@ export const isBlockedByUser = async (id: string) => {
 export const blockUser = async (id: string) => {
   const self = await getSelf();
 
-  if (self.id === id) throw new Error("Cannot block yourself");
+  // Rate limit theo userId — chống spam block.
+  await enforceRateLimit(`block:${self.id}`);
+
+  if (self.id === id) throw new SelfActionError("Không thể tự chặn chính mình");
 
   const otherUser = await db.user.findUnique({
     where: { id },
   });
 
-  if (!otherUser) throw new Error("User not found");
+  if (!otherUser) throw new UserNotFoundError();
 
   const existingBlock = await db.block.findUnique({
     where: {
@@ -48,7 +58,7 @@ export const blockUser = async (id: string) => {
     },
   });
 
-  if (existingBlock) throw new Error("User is already blocked");
+  if (existingBlock) throw new AlreadyBlockedError();
 
   const block = await db.block.create({
     data: {
@@ -66,13 +76,16 @@ export const blockUser = async (id: string) => {
 export const unblockUser = async (id: string) => {
   const self = await getSelf();
 
-  if (self.id === id) throw new Error("Cannot unblock yourself");
+  // Rate limit dùng chung key với block.
+  await enforceRateLimit(`block:${self.id}`);
+
+  if (self.id === id) throw new SelfActionError("Không thể bỏ chặn chính mình");
 
   const otherUser = await db.user.findUnique({
     where: { id },
   });
 
-  if (!otherUser) throw new Error("User not found");
+  if (!otherUser) throw new UserNotFoundError();
 
   const existingBlock = await db.block.findUnique({
     where: {
@@ -83,7 +96,7 @@ export const unblockUser = async (id: string) => {
     },
   });
 
-  if (!existingBlock) throw new Error("User is not blocked");
+  if (!existingBlock) throw new NotBlockedError();
 
   const unblock = await db.block.delete({
     where: {

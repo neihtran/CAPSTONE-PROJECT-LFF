@@ -37,17 +37,17 @@ export function UserItem({
         isActive && "bg-accent"
       )}
     >
-      <Link href={href}>
-        <div
+      <Link href={href} legacyBehavior>
+        <a
           className={cn(
             "flex items-center w-full gap-x-4",
             collapsed && "justify-center"
           )}
         >
-          <UserAvatar imageUrl={imageUrl} username={username} isLive={isLive} />
-          {!collapsed && <p className="truncate">{username}</p>}
+          <UserAvatar imageUrl={imageUrl} username={username} isLive={isLive} showBadge />
+          {!collapsed && <span className="truncate">{username}</span>}
           {!collapsed && isLive && <LiveBadge className="ml-auto" />}
-        </div>
+        </a>
       </Link>
     </Button>
   );
