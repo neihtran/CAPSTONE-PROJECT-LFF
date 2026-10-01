@@ -30,6 +30,8 @@ export default authMiddleware({
 });
 
 export const config = {
-  // Match tất cả pages + api routes.
-  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+  // Match tất cả pages + api routes (chuẩn Clerk quickstart).
+  // Bao phủ: "/", "/[username]" ở gốc domain, "/(dashboard)/u/[username]/*",
+  // và toàn bộ "/api/*" + "/trpc/*". Loại trừ _next và file có extension.
+  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
 };

@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 
@@ -7,6 +9,11 @@ import { cn } from "@/lib/utils";
  * CategoryBadge — chip hiển thị 1 category với link đến /browse/[slug].
  *
  * Dùng trong ResultCard để viewer click → trang category.
+ *
+ * NOTE: file này PHẢI là "use client" vì dùng onClick={(e) => e.stopPropagation()}
+ * để ngăn việc click vào CategoryBadge lan ra Link cha (điều hướng tới trang
+ * streamer). Nếu là Server Component, Next.js sẽ crash với lỗi:
+ *   "Event handlers cannot be passed to Client Component props"
  */
 export function CategoryBadge({
   slug,
