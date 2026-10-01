@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
@@ -19,7 +19,6 @@ export const metadata: Metadata = {
   },
   description: "Twitch Clone with Next.js, React.js, TailWindCSS & TypeScript.",
   manifest: "/manifest.json",
-  themeColor: "#9146ff",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -28,6 +27,13 @@ export const metadata: Metadata = {
   icons: {
     apple: "/icon-192.png",
   },
+};
+
+// `themeColor` được tách ra `viewport` export theo yêu cầu của Next.js 14+
+// (xem https://nextjs.org/docs/app/api-reference/functions/generate-viewport).
+// Đặt ở `metadata` sẽ bị Next.js cảnh báo deprecated mỗi lần render.
+export const viewport: Viewport = {
+  themeColor: "#9146ff",
 };
 
 export default function RootLayout({
