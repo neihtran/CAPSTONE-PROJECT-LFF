@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 
 import { db } from "@/lib/db";
 import { getRecentAlerts } from "@/lib/recent-alerts-service";
@@ -15,7 +15,7 @@ import { getRecentAlerts } from "@/lib/recent-alerts-service";
  * Auth: chỉ chính streamer của stream mới được gọi.
  */
 export async function GET(request: Request) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

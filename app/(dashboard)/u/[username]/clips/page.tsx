@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getUserByUsername } from "@/lib/user-service";
 import { listClipsByStream } from "@/lib/clip-service";
-import { currentUser } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
 import { ClipsGrid } from "@/components/clips/clips-grid";
 
 interface PageProps {
