@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { toast } from "sonner";
 
 /**
  * ClipPlayer — play HLS video với custom controls.
@@ -10,6 +12,11 @@ import React, { useEffect, useRef, useState } from "react";
  * Trim: chỉ play đoạn [startTime, endTime] của videoUrl — dùng currentTime + ended event.
  *
  * Auto-increment view khi mount (qua parent — không làm ở đây để tránh dup).
+ *
+ * Edge cases:
+ *   - videoUrl rỗng / invalid → show placeholder + message.
+ *   - HLS load fail → show error với nút retry.
+ *   - Stream đã end (LiveKit HLS hết hạn) → giải thích "cần LiveKit Egress".
  */
 
 type ClipPlayerProps = {
@@ -45,6 +52,12 @@ export function ClipPlayer({
     const video = videoRef.current;
     if (!video) return;
 
+    // Guard: nếu không có videoUrl → không setup gì cả, để placeholder hiện.
+    if (!videoUrl || !videoUrl.trim()) {
+      setError("Clip này chưa có video. Vui lòng quay lại sau.");
+      return;
+    }
+
     let hls: { destroy: () => void } | null = null;
 
     const setupNativeOrHls = async () => {
@@ -62,8 +75,19 @@ export function ClipPlayer({
           const hlsInstance = new Hls();
           hlsInstance.loadSource(videoUrl);
           hlsInstance.attachMedia(video);
-          hlsInstance.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
-            if (data?.fatal) setError("Lỗi tải video. Vui lòng thử lại.");
+          hlsInstance.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean; details?: string }) => {
+            if (data?.fatal) {
+              // Phân biệt lỗi để user hiểu:
+              // - manifestLoadError: HLS stream hết hạn (LiveKit Cloud TTL).
+              // - networkError: mạng/CDN chặn.
+              if (data.details?.includes("manifest")) {
+                setError(
+                  "Stream gốc đã hết hạn. LiveKit chỉ giữ HLS trong thời gian ngắn sau khi kết thúc live."
+                );
+              } else {
+                setError("Lỗi tải video. Vui lòng thử lại.");
+              }
+            }
           });
           hls = hlsInstance;
         } else {
@@ -163,14 +187,41 @@ export function ClipPlayer({
           onClick={togglePlay}
         />
 
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-white">
-            {error}
+        {error ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white gap-3 p-6 text-center">
+            {thumbnail && (
+              <Image
+                src={thumbnail}
+                alt={title}
+                fill
+                className="opacity-30 object-cover -z-10"
+                unoptimized
+              />
+            )}
+            <div className="text-4xl">🎬</div>
+            <p className="text-sm font-medium">{error}</p>
+            <p className="text-xs text-white/70 max-w-md">
+              Để xem lại clip, cần bật <strong>LiveKit Egress</strong> để ghi
+              từng clip thành file MP4/HLS riêng biệt.
+            </p>
           </div>
-        )}
+        ) : !videoUrl ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted text-muted-foreground gap-2">
+            {thumbnail && (
+              <Image
+                src={thumbnail}
+                alt={title}
+                fill
+                className="opacity-40 object-cover -z-10"
+                unoptimized
+              />
+            )}
+            <p className="text-sm font-medium">Clip chưa có video</p>
+          </div>
+        ) : null}
 
         {/* Play button overlay khi paused. */}
-        {!isPlaying && !error && (
+        {!isPlaying && !error && videoUrl && (
           <button
             type="button"
             onClick={togglePlay}
@@ -186,44 +237,47 @@ export function ClipPlayer({
         )}
       </div>
 
-      {/* Custom controls. */}
-      <div className="flex items-center gap-x-3">
-        <button
-          type="button"
-          onClick={togglePlay}
-          className="p-2 hover:bg-muted rounded transition-colors"
-          aria-label={isPlaying ? "Pause" : "Play"}
-        >
-          {isPlaying ? "⏸" : "▶"}
-        </button>
+      {/* Custom controls — chỉ hiện khi có video. */}
+      {!error && videoUrl && (
+        <div className="flex items-center gap-x-3">
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="p-2 hover:bg-muted rounded transition-colors"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? "⏸" : "▶"}
+          </button>
 
-        <div
-          className="flex-1 h-1.5 bg-muted rounded cursor-pointer"
-          onClick={handleSeek}
-        >
           <div
-            className="h-full bg-primary rounded transition-all"
-            style={{ width: `${progress}%` }}
-          />
+            className="flex-1 h-1.5 bg-muted rounded cursor-pointer"
+            onClick={handleSeek}
+          >
+            <div
+              className="h-full bg-primary rounded transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {Math.max(0, currentTime - startTime).toFixed(0)}s / {duration_}s
+          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard
+                .writeText(`${window.location.origin}/clips/${clipId}`)
+                .then(() => toast.success("Đã copy link!"))
+                .catch(() => toast.error("Không thể copy link"));
+            }}
+            className="p-2 hover:bg-muted rounded text-xs"
+            title="Copy link"
+          >
+            🔗 Share
+          </button>
         </div>
-
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {Math.max(0, currentTime - startTime).toFixed(0)}s / {duration_}s
-        </span>
-
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard
-              .writeText(`${window.location.origin}/clips/${clipId}`)
-              .then(() => alert("Đã copy link!"));
-          }}
-          className="p-2 hover:bg-muted rounded text-xs"
-          title="Copy link"
-        >
-          🔗 Share
-        </button>
-      </div>
+      )}
 
       <p className="sr-only">{title}</p>
     </div>

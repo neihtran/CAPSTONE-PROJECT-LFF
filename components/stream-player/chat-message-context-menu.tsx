@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -20,7 +21,14 @@ type ChatMessageContextMenuProps = {
   reporterUserId: string | null;
   onClose: () => void;
   onTimeout: () => void;
-  menuSide?: "bottom" | "top"; // auto-detected: flip up if near bottom
+  /**
+   * Anchor element để tính vị trí popover (message row).
+   * Bắt buộc khi dùng Portal — menu thoát khỏi overflow container nên
+   * cần tính toán vị trí fixed dựa trên rect của anchor.
+   */
+  anchorRef: React.RefObject<HTMLElement>;
+  /** Auto-detected: flip up if near bottom. */
+  menuSide?: "bottom" | "top";
 };
 
 /**
@@ -29,6 +37,12 @@ type ChatMessageContextMenuProps = {
  * Moderator/Owner: thấy Timeout / Ban / Delete Message.
  * Viewer (không phải mod): thấy Report.
  * Chính mình: không thấy gì.
+ *
+ * Fix bug "menu rơi xuống dưới khung chat":
+ *   Render qua React Portal vào document.body + dùng position: fixed
+ *   với toạ độ từ anchorRef.getBoundingClientRect().
+ *   Trước đây menu dùng absolute + anchor là div nhỏ + ChatList có
+ *   overflow-y-auto → menu bị cắt, hiển thị như rớt ra ngoài khung.
  */
 export function ChatMessageContextMenu({
   messageId,
@@ -40,21 +54,66 @@ export function ChatMessageContextMenu({
   reporterUserId,
   onClose,
   onTimeout,
+  anchorRef,
   menuSide = "bottom",
 }: ChatMessageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
+  // Position: tính theo rect của anchor + re-position khi scroll/resize.
+  // Dùng inline style position: fixed → không bị clipping bởi overflow parent.
+  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    const updatePos = () => {
+      const anchor = anchorRef.current;
+      const menu = menuRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      // Ước lượng width menu để canh right; nếu menu đã mount thì lấy width thật.
+      const menuWidth = menu?.offsetWidth ?? 160;
+      const top =
+        menuSide === "top"
+          ? rect.top - 8 // mở lên trên (offsetHeight sẽ làm top dưới nếu cần)
+          : rect.bottom + 4;
+      const left = Math.max(8, rect.right - menuWidth);
+      setPos({ top, left });
+    };
+
+    updatePos();
+
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [anchorRef, menuSide]);
+
   // Click outside → close.
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        // Bỏ qua click trên anchor (để toggle menu, không đóng ngay)
+        if (anchorRef.current && anchorRef.current.contains(target)) return;
         onClose();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose, anchorRef]);
+
+  // Esc → close.
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
   }, [onClose]);
 
   const handleBan = () => {
@@ -138,17 +197,25 @@ export function ChatMessageContextMenu({
     onClose();
   };
 
-  return (
+  // Render qua Portal — thoát khỏi mọi overflow container (ChatList).
+  if (typeof window === "undefined") return null;
+
+  const menuNode = (
     <div
       ref={menuRef}
+      // position: fixed → không bị clip bởi overflow-y-auto của ChatList.
+      style={{
+        position: "fixed",
+        top: pos?.top ?? -9999,
+        left: pos?.left ?? -9999,
+        zIndex: 50,
+      }}
       className={cn(
-        "absolute right-2 z-50",
         "min-w-40 bg-card border border-border rounded-lg shadow-lg",
-        "p-1 space-y-0.5 animate-in fade-in-0 zoom-in-95 duration-100",
-        menuSide === "top"
-          ? "bottom-full mb-1"
-          : "top-full mt-1"
+        "p-1 space-y-0.5 animate-in fade-in-0 zoom-in-95 duration-100"
       )}
+      // menuSide chỉ dùng cho logic tính pos ở useEffect, không cần class.
+      data-menu-side={menuSide}
       onClick={(e) => e.stopPropagation()}
     >
       {isMod ? (
@@ -159,33 +226,25 @@ export function ChatMessageContextMenu({
           </MenuButton>
 
           {/* Ban */}
-          <MenuButton
-            onClick={handleBan}
-            disabled={isPending}
-            variant="danger"
-          >
+          <MenuButton onClick={handleBan} disabled={isPending} variant="danger">
             🚫 Ban vĩnh viễn
           </MenuButton>
 
           {/* Delete */}
-          <MenuButton
-            onClick={handleDelete}
-            disabled={isPending}
-            variant="danger"
-          >
+          <MenuButton onClick={handleDelete} disabled={isPending} variant="danger">
             🗑 Xóa tin nhắn
           </MenuButton>
         </>
       ) : reporterUserId ? (
         <>
           {/* Report (viewer) */}
-          <MenuButton onClick={handleReport}>
-            🚩 Báo cáo vi phạm
-          </MenuButton>
+          <MenuButton onClick={handleReport}>🚩 Báo cáo vi phạm</MenuButton>
         </>
       ) : null}
     </div>
   );
+
+  return createPortal(menuNode, document.body);
 }
 
 function MenuButton({

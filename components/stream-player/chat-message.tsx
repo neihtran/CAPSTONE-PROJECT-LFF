@@ -99,7 +99,8 @@ export function ChatMessage({ data }: { data: ChatItem }) {
         )}
       </div>
 
-      {/* Context menu popover. */}
+      {/* Context menu popover — render qua Portal (xem chat-message-context-menu.tsx).
+          Truyền msgRef làm anchor để menu tính toạ độ fixed chính xác. */}
       {showContextMenu && (
         <ChatMessageContextMenu
           messageId={messageId}
@@ -115,6 +116,7 @@ export function ChatMessage({ data }: { data: ChatItem }) {
             setShowTimeoutDialog(true);
           }}
           menuSide={menuSide}
+          anchorRef={msgRef}
         />
       )}
 

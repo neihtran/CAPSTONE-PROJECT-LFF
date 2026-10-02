@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   addBannedWordAction,
   removeBannedWordAction,
@@ -50,6 +51,13 @@ export function BannedWordsManager({
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  // Confirm dialog state.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<{
+    id: string;
+    pattern: string;
+  } | null>(null);
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = pattern.trim();
@@ -76,19 +84,23 @@ export function BannedWordsManager({
     });
   };
 
-  const handleRemove = (id: string, pat: string) => {
-    if (!confirm(`Xóa pattern "${pat}"?`)) return;
+  // Mở confirm dialog thay vì window.confirm().
+  const requestRemove = (id: string, pat: string) => {
+    setPendingRemove({ id, pattern: pat });
+    setConfirmOpen(true);
+  };
 
-    startTransition(async () => {
-      try {
-        await removeBannedWordAction({ id });
-        toast.success("Đã xóa");
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể xóa"
-        );
-      }
-    });
+  const handleConfirmRemove = async () => {
+    if (!pendingRemove) return;
+    const { id } = pendingRemove;
+    try {
+      await removeBannedWordAction({ id });
+      toast.success("Đã xóa");
+      setPendingRemove(null);
+    } catch (err) {
+      setPendingRemove(null);
+      throw err instanceof Error ? err : new Error("Không thể xóa");
+    }
   };
 
   return (
@@ -175,7 +187,7 @@ export function BannedWordsManager({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleRemove(bw.id, bw.pattern)}
+                  onClick={() => requestRemove(bw.id, bw.pattern)}
                   disabled={isPending}
                   className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                 >
@@ -186,6 +198,25 @@ export function BannedWordsManager({
           ))
         )}
       </div>
+
+      {/* Confirm dialog thay thế window.confirm(). */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(o) => {
+          setConfirmOpen(o);
+          if (!o) setPendingRemove(null);
+        }}
+        title="Xóa banned word"
+        description={
+          pendingRemove
+            ? `Bạn có chắc muốn xóa pattern "${pendingRemove.pattern}"?`
+            : ""
+        }
+        variant="danger"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleConfirmRemove}
+      />
     </div>
   );
 }

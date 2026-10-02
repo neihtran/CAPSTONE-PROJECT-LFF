@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { getSelf } from "@/lib/auth-service";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { UpdateStreamSchema, EndStreamSchema } from "./stream.schema";
+import { endStreamSession } from "@/lib/analytics-service";
 
 /**
  * Action: cập nhật thông tin Stream của người dùng hiện tại.
@@ -117,7 +118,76 @@ export const endStream = async (streamId: string) => {
     // 3) Rate limit để chống spam end (tránh quota API LiveKit).
     await enforceRateLimit(`end-stream:${self.id}`, { isStrict: false });
 
-    // 4) Đóng LiveKit Room. Tất cả viewers sẽ bị disconnect real-time.
+    // 4) Tính stats thực tế cho session đang mở (fix lỗi 6: analytics = 0).
+    //
+    // 2 nguồn end session song song:
+    //   a) Webhook LiveKit `ingress_ended` → tự end với stats=0 (đã có trong webhook).
+    //   b) Streamer bấm nút "Kết thúc Live" từ dashboard → action này.
+    //
+    // Webhook có thể chạy SAU nút tay (race condition) → bọc try/catch để fail-open.
+    // Tính stats từ DB: peakViewers = count StreamView (max đồng thời),
+    // totalViews = count, donationCents = sum Donation, newSubs = count mới trong session.
+    try {
+      const openSession = await db.streamSession.findFirst({
+        where: { streamId: parsed.data.streamId, endedAt: null },
+        orderBy: { startedAt: "desc" },
+        select: { id: true, startedAt: true },
+      });
+
+      if (openSession) {
+        const [viewAgg, uniqueUserCount, donationAgg, newSubsCount] =
+          await Promise.all([
+            // peakViewers: StreamView không có concurrentViewers field nên
+            // dùng max(count join cùng timestamp) — đơn giản nhưng đúng cho MVP.
+            // Lấy tổng view làm upper-bound cho peak.
+            db.streamView.count({
+              where: { sessionId: openSession.id },
+            }),
+            db.streamView.findMany({
+              where: { sessionId: openSession.id, userId: { not: null } },
+              distinct: ["userId"],
+              select: { userId: true },
+            }),
+            db.donation.aggregate({
+              where: {
+                streamId: parsed.data.streamId,
+                status: "COMPLETED",
+                createdAt: { gte: openSession.startedAt },
+              },
+              _sum: { amountCents: true },
+            }),
+            db.subscription.count({
+              where: {
+                streamerId: self.id,
+                startedAt: { gte: openSession.startedAt },
+              },
+            }),
+          ]);
+
+        const totalViews = viewAgg;
+        const uniqueViewers = uniqueUserCount.length;
+        // peakViewers: dùng totalViews làm upper bound; production nên track
+        // concurrentViewers count real-time rồi mới lấy max. MVP: dùng max của
+        // totalViews và uniqueViewers.
+        const peakViewers = Math.max(totalViews, uniqueViewers);
+
+        await endStreamSession(openSession.id, {
+          peakViewers,
+          totalViews,
+          uniqueViewers,
+          donationCents: donationAgg._sum.amountCents ?? 0,
+          newSubscribers: newSubsCount,
+        });
+      }
+    } catch (sessionErr) {
+      // Fail-open: log warning nhưng vẫn tiếp tục end stream (không block UI).
+      console.warn(
+        "[endStream] Không thể cập nhật session stats:",
+        sessionErr instanceof Error ? sessionErr.message : sessionErr
+      );
+    }
+
+    // 5) Đóng LiveKit Room. Tất cả viewers sẽ bị disconnect real-time.
     const apiUrl = process.env.LIVEKIT_API_URL;
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -139,11 +209,23 @@ export const endStream = async (streamId: string) => {
       console.warn("[endStream] LiveKit env chưa được set — bỏ qua đóng room.");
     }
 
-    // 5) Update DB: isLive=false + clear credentials để chống leak.
+    // 5) Update DB: isLive=false + reset chat fields + clear credentials để chống leak.
+    //
+    // Bug 2 fix: reset isChatEnabled/Delayed/FollowersOnly về default khi end live.
+    // Lý do: nếu phiên trước streamer đã toggle chat OFF, phiên sau go-live
+    // lại vẫn giữ OFF → viewer bị kẹt "Chat đã bị tắt" cho đến khi streamer
+    // toggle ON bằng tay. Reset về default (ON/OFF/OFF) đảm bảo chat luôn
+    // hoạt động khi bắt đầu phiên mới.
+    //
+    // Idempotent: endStream có thể được gọi nhiều lần (qua webhook + nút tay)
+    // → reset fields là an toàn vì chúng là 1 dòng UPDATE duy nhất.
     const updated = await db.stream.update({
       where: { id: parsed.data.streamId },
       data: {
         isLive: false,
+        isChatEnabled: true, // Mặc định ON cho phiên live mới
+        isChatDelayed: false,
+        isChatFollowersOnly: false,
         // Không xóa ingressId/serverUrl/streamKey — giữ để OBS reconnect được
         // nếu streamer muốn go-live lại ngay (chỉ tạo lại khi cần).
       },
@@ -209,3 +291,91 @@ async function syncRoomMetadata(
     );
   }
 }
+
+/**
+ * Action: chủ động đánh dấu stream là LIVE (fallback khi LiveKit webhook
+ * không hoạt động do chưa cấu hình trên LiveKit Cloud).
+ *
+ * Flow:
+ *   1. Set isLive=true trên DB.
+ *   2. Tạo StreamSession mới (nếu chưa có open session).
+ *   3. Notify followers qua notificationService.
+ *
+ * Note: dù chưa nhận được webhook, OBS vẫn đẩy stream lên LiveKit bình
+ * thường — việc này chỉ là để ensure follower nhận được "🔴 LIVE".
+ *
+ * @param streamId - UUID của Stream.
+ */
+export const goLiveManually = async (streamId: string) => {
+  // 1) Validate input (tái sử dụng EndStreamSchema cho UUID validation).
+  const parsed = EndStreamSchema.safeParse({ streamId });
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues[0]?.message ?? "Stream ID không hợp lệ"
+    );
+  }
+
+  try {
+    const self = await getSelf();
+    const stream = await db.stream.findUnique({
+      where: { id: parsed.data.streamId },
+      select: { id: true, userId: true, isLive: true, name: true },
+    });
+
+    if (!stream) throw new Error("Stream không tồn tại");
+    if (stream.userId !== self.id) {
+      throw new Error("Bạn không có quyền với stream này");
+    }
+    if (stream.isLive) {
+      throw new Error("Stream đã LIVE từ trước");
+    }
+
+    // 2) Set isLive = true.
+    await db.stream.update({
+      where: { id: parsed.data.streamId },
+      data: { isLive: true },
+    });
+
+    // 3) Tạo StreamSession mới nếu chưa có open session.
+    const openSession = await db.streamSession.findFirst({
+      where: { streamId: parsed.data.streamId, endedAt: null },
+    });
+    if (!openSession) {
+      const { startStreamSession } = await import("@/lib/analytics-service");
+      await startStreamSession(parsed.data.streamId);
+    }
+
+    // 4) Notify followers.
+    try {
+      const followers = await db.follow.findMany({
+        where: { followingId: self.id },
+        select: { followerId: true },
+      });
+      if (followers.length > 0) {
+        const { notifyLiveStream } = await import("@/lib/notification-service");
+        await notifyLiveStream({
+          streamerId: self.id,
+          streamerUsername: self.username,
+          streamName: stream.name ?? "Live stream",
+          followerIds: followers.map((f) => f.followerId),
+        });
+      }
+    } catch (notifyErr) {
+      console.warn(
+        "[goLiveManually] notify followers failed:",
+        notifyErr instanceof Error ? notifyErr.message : notifyErr
+      );
+    }
+
+    revalidatePath(`/u/${self.username}`);
+    revalidatePath(`/${self.username}`);
+    revalidatePath(`/${self.username}/keys`);
+
+    return { success: true };
+  } catch (error) {
+    console.error("goLiveManually", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Không thể bắt đầu live"
+    );
+  }
+};

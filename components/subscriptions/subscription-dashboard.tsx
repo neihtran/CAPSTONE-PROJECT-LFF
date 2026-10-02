@@ -5,6 +5,9 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
 import { formatVND, parseVNDInput } from "@/lib/format";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { cn } from "@/lib/utils";
+import { getTierStyle, TierEffects, TierBadgeLabel } from "./tier-effects";
 
 type Tier = {
   id: string;
@@ -50,18 +53,23 @@ export function SubscriptionDashboard({
   const [subscribers] = useState(initialSubscribers);
   const [revenue] = useState(totalRevenueCents);
 
+  // Fix bug 3: cần nextAvailableLevel (max(level)+1) để tránh
+  // @@unique([streamerId, level]) conflict khi tạo gói mới.
+  const nextAvailableLevel =
+    tiers.length > 0 ? Math.max(...tiers.map((t) => t.level)) + 1 : 1;
+
   return (
     <div className="space-y-8">
       {/* Revenue summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Tổng revenue" value={formatVND(revenue)} color="#32CD32" />
+        <StatCard label="Tổng doanh thu" value={formatVND(revenue)} color="#32CD32" />
         <StatCard
-          label="Active subscribers"
+          label="Người đăng ký đang hoạt động"
           value={subscribers.filter((s) => s.status === "ACTIVE").length.toString()}
           color="#9146FF"
         />
         <StatCard
-          label="Tổng subscribers"
+          label="Tổng người đăng ký"
           value={subscribers.length.toString()}
           color="#FFD700"
         />
@@ -83,6 +91,7 @@ export function SubscriptionDashboard({
           </div>
           <CreateTierButton
             streamerId={streamerId}
+            nextLevel={nextAvailableLevel}
             onCreated={(tier) => setTiers((prev) => [...prev, tier])}
           />
         </div>
@@ -113,9 +122,9 @@ export function SubscriptionDashboard({
       {/* Subscriber list */}
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-semibold">Subscribers</h2>
+          <h2 className="text-lg font-semibold">Người đăng ký</h2>
           <p className="text-sm text-muted-foreground">
-            Danh sách người đã subscribe bạn
+            Danh sách những người đã đăng ký gói của bạn
           </p>
         </div>
 
@@ -157,7 +166,15 @@ export function SubscriptionDashboard({
                           sub.status === "ACTIVE" ? "text-green-500" : "text-muted-foreground"
                         }`}
                       >
-                        {sub.status}
+                        {sub.status === "ACTIVE"
+                          ? "Đang hoạt động"
+                          : sub.status === "CANCELED"
+                          ? "Đã hủy"
+                          : sub.status === "EXPIRED"
+                          ? "Đã hết hạn"
+                          : sub.status === "PAUSED"
+                          ? "Tạm dừng"
+                          : sub.status}
                       </span>
                     </td>
                   </tr>
@@ -196,24 +213,36 @@ function TierCard({
   const [editName, setEditName] = useState(tier.name);
   const [editPrice, setEditPrice] = useState(String(tier.priceCents));
 
-  const handleDelete = () => {
-    if (!confirm(`Xóa gói "${tier.name}"?`)) return;
-    startTransition(async () => {
-      try {
-        const res = await fetch(`/api/subscriptions/tiers?id=${tier.id}`, { method: "DELETE" });
-        if (!res.ok) throw new Error("Delete failed");
-        toast.success("Đã xóa gói");
-        onDeleted(tier.id);
-      } catch {
-        toast.error("Không thể xóa gói");
-      }
+  // Confirm dialog state.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Mở confirm dialog thay vì window.confirm().
+  const requestDelete = () => setConfirmOpen(true);
+
+  const handleConfirmDelete = async () => {
+    const res = await fetch(`/api/subscriptions/tiers?id=${tier.id}`, {
+      method: "DELETE",
     });
+    if (!res.ok) {
+      throw new Error("Delete failed");
+    }
+    toast.success("Đã xóa gói");
+    onDeleted(tier.id);
   };
 
   const handleSaveEdit = () => {
+    // Fix bug 3: thêm validation đầy đủ (NaN, max bound) trước khi PATCH.
     const priceCents = parseVNDInput(editPrice);
-    if (!editName || priceCents < 10_000) {
-      toast.error("Tên và giá tối thiểu 10.000 đ");
+    if (!editName.trim()) {
+      toast.error("Vui lòng nhập tên gói");
+      return;
+    }
+    if (!Number.isFinite(priceCents) || priceCents < 10_000) {
+      toast.error("Giá tối thiểu 10.000 đ");
+      return;
+    }
+    if (priceCents > 10_000_000) {
+      toast.error("Giá tối đa 10.000.000 đ");
       return;
     }
     startTransition(async () => {
@@ -221,26 +250,41 @@ function TierCard({
         const res = await fetch(`/api/subscriptions/tiers?id=${tier.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: editName, priceCents }),
+          body: JSON.stringify({ name: editName.trim(), priceCents }),
         });
-        if (!res.ok) throw new Error("Update failed");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error ?? `Cập nhật thất bại (${res.status})`);
+        }
         toast.success("Đã cập nhật gói");
-        onUpdated({ ...tier, name: editName, priceCents });
+        onUpdated({ ...tier, name: editName.trim(), priceCents });
         setEditing(false);
-      } catch {
-        toast.error("Không thể cập nhật");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Không thể cập nhật");
       }
     });
   };
 
   return (
-    <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: `${tier.color}40` }}>
+    <div
+      className={cn(
+        "relative rounded-xl border p-5 space-y-3 overflow-hidden transition-transform hover:scale-[1.01]",
+        getTierStyle(tier.level).bg,
+        getTierStyle(tier.level).border,
+        getTierStyle(tier.level).glow
+      )}
+    >
+      {/* Effects overlay (shimmer/sparkle/rainbow border) */}
+      <TierEffects level={tier.level} badgeColor={tier.color} />
+
+      {/* Content với z-index để effects không che */}
+      <div className="relative z-10 space-y-3">
       <div className="flex items-start justify-between">
         <div
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-bold text-white"
           style={{ backgroundColor: tier.color }}
         >
-          {tier.name}
+          {tier.name} <span className="opacity-70 ml-1">· {TierBadgeLabel(tier.level)}</span>
         </div>
         <div className="flex gap-1">
           <button
@@ -252,7 +296,7 @@ function TierCard({
           </button>
           <button
             type="button"
-            onClick={handleDelete}
+            onClick={requestDelete}
             disabled={isPending}
             className="text-xs text-red-400 hover:text-red-300 px-2 py-1"
           >
@@ -305,15 +349,38 @@ function TierCard({
           </div>
         </>
       )}
+      </div>
+
+      {/* Confirm dialog thay thế window.confirm(). */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Xóa gói subscription"
+        description={
+          <>
+            Bạn có chắc muốn xóa gói <strong>&ldquo;{tier.name}&rdquo;</strong>?
+            <br />
+            <span className="text-xs text-muted-foreground">
+              Hành động này không thể hoàn tác. Subscriber hiện tại sẽ bị ảnh hưởng.
+            </span>
+          </>
+        }
+        variant="danger"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
 
 function CreateTierButton({
   streamerId,
+  nextLevel,
   onCreated,
 }: {
   streamerId: string;
+  nextLevel: number;
   onCreated: (t: Tier) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -324,28 +391,47 @@ function CreateTierButton({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Fix bug 3: parseVNDInput trả 0 nếu invalid → cần check NaN explicitly.
+    // Thêm giới hạn max hợp lý (10.000.000đ = 10tr).
     const priceCents = parseVNDInput(price);
-    if (!name || priceCents < 10_000) {
-      toast.error("Vui lòng nhập tên và giá (tối thiểu 10.000 đ)");
+    if (!name.trim()) {
+      toast.error("Vui lòng nhập tên gói");
+      return;
+    }
+    if (!Number.isFinite(priceCents) || priceCents < 10_000) {
+      toast.error("Giá tối thiểu 10.000 đ");
+      return;
+    }
+    if (priceCents > 10_000_000) {
+      toast.error("Giá tối đa 10.000.000 đ");
       return;
     }
 
     startTransition(async () => {
       try {
+        // Fix bug 3: gửi level = nextLevel (auto-increment), không hardcode 1.
+        // Tránh @@unique([streamerId, level]) conflict.
         const res = await fetch("/api/subscriptions/tiers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, priceCents, level: 1, description }),
+          body: JSON.stringify({
+            name: name.trim(),
+            priceCents,
+            level: nextLevel,
+            description,
+          }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Create failed");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error ?? `Tạo thất bại (${res.status})`);
+        }
         toast.success("Đã tạo gói subscription");
         onCreated({
           id: data.id,
-          name,
+          name: name.trim(),
           description,
           priceCents,
-          level: 1,
+          level: nextLevel,
           color: "#9146FF",
           status: "ACTIVE",
           subscriberCount: 0,

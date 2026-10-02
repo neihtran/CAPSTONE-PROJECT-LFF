@@ -1,21 +1,21 @@
 {
-  "name": "Twitch Clone",
-  "short_name": "Twitch",
-  "description": "Live streaming platform with chat, alerts, ranks, events & PWA push.",
+  "name": "LFF — Live For Fun",
+  "short_name": "LFF",
+  "description": "LFF (Live For Fun) — Live streaming platform with chat, alerts, ranks, events & PWA push.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0e0e10",
-  "theme_color": "#9146ff",
+  "theme_color": "#06b6d4",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/lff-logo.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/lff-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

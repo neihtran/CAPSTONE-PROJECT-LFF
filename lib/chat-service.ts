@@ -37,16 +37,44 @@ export type HistoryItem = {
 };
 
 /**
- * Load lịch sử chat của một stream (mặc định 50 tin nhắn gần nhất).
+ * Load lịch sử chat của stream, CHỈ trong session đang active.
  *
- * Trả về ASC (oldest first) để client render đúng thứ tự thời gian mà không cần sort lại.
+ * Fix Bug 3: filter theo `openSession.startedAt` để chỉ trả về message
+ * thuộc về session hiện tại (không trả message cũ từ session đã end).
+ *
+ * Edge cases:
+ *   - Stream chưa có session active → trả về [].
+ *   - Session cũ đã `endedAt != null` → bị bỏ qua.
+ *   - Nếu có nhiều session mở (lỗi logic) → lấy session mới nhất.
+ *
+ * @param streamId - ID của stream.
+ * @param limit - Số message tối đa (mặc định 50, lấy từ cuối session).
+ * @returns Mảng HistoryItem ASC (oldest first).
  */
 export const loadChatHistory = async (
   streamId: string,
   limit = 50
 ): Promise<HistoryItem[]> => {
+  // Tìm session active của stream.
+  // Active = endedAt IS NULL (stream đang live).
+  // Lấy session mới nhất nếu có nhiều (phòng trường hợp data anomaly).
+  const openSession = await db.streamSession.findFirst({
+    where: { streamId, endedAt: null },
+    orderBy: { startedAt: "desc" },
+    select: { id: true, startedAt: true },
+  });
+
+  // Không có session active → chat list trống.
+  if (!openSession) {
+    return [];
+  }
+
   const rows = await db.chatMessage.findMany({
-    where: { streamId },
+    where: {
+      streamId,
+      // CHỈ lấy message sau khi session bắt đầu.
+      sentAt: { gte: openSession.startedAt },
+    },
     orderBy: { sentAt: "asc" },
     take: limit,
     include: {

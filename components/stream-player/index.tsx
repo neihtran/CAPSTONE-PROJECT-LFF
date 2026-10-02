@@ -88,7 +88,11 @@ export function StreamPlayer({
         </div>
 
         <div className="space-y-4 col-span-1 lg:col-span-2 lg:overflow-y-auto hidden-scrollbar pb-10">
-          <Video hostName={user.username} hostIdentity={user.id} />
+          <Video
+            hostName={user.username}
+            hostIdentity={user.id}
+            isOwner={modInfo.isModerator}
+          />
           <Header
             imageUrl={user.imageUrl}
             hostName={user.username}

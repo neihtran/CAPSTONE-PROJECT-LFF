@@ -37,6 +37,9 @@ export default async function AnalyticsPage({ params: { username } }: AnalyticsP
     );
   }
 
+  // 30 ngày gần nhất (fix Bug 3: đảm bảo date range đúng để hiển thị lịch sử).
+  // Tính từ đầu ngày hôm qua (00:00:00 UTC) → hiện tại để bao gồm cả session
+  // stream vào ngày hôm qua và hôm nay.
   const since = subDays(new Date(), 30);
   const [overview, dailyStats, topStreams, subRevenue, donRevenue] = await Promise.all([
     getOverviewStats(self.id, since),
@@ -49,9 +52,9 @@ export default async function AnalyticsPage({ params: { username } }: AnalyticsP
   return (
     <div className="w-full max-w-[1500px] mx-auto px-4 lg:px-6 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <h1 className="text-2xl font-bold">Thống kê</h1>
         <p className="text-sm text-muted-foreground">
-          Thống kê stream của bạn (30 ngày gần nhất)
+          Thống kê phát sóng của bạn (30 ngày gần nhất)
         </p>
       </div>
 

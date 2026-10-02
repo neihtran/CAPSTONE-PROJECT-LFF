@@ -4,6 +4,8 @@ import { currentUser } from "@clerk/nextjs/server";
 import { getUserByUsername } from "@/lib/user-service";
 import { StreamPlayer } from "@/components/stream-player";
 
+import { EndLiveFab } from "./_components/end-live-fab";
+
 export default async function CreatorPage({
   params: { username },
 }: {
@@ -31,6 +33,8 @@ export default async function CreatorPage({
         moderationInfo={moderationInfo}
         viewerIsLoggedIn={!!externalUser}
       />
+      {/* Nổi góc phải-dưới: cho phép end live mà không cần rời trang. */}
+      <EndLiveFab streamId={user.stream.id} isLive={user.stream.isLive} />
     </div>
   );
 }

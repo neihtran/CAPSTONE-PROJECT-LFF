@@ -62,6 +62,14 @@ export type TopStreamStat = {
 
 /**
  * Tổng quan stats của 1 streamer.
+ *
+ * Logic đếm subscriber:
+ *   - `totalActiveSubscribers`: đếm DISTINCT subscriberId (1 user sub nhiều tier
+ *     hoặc upgrade tier nhiều lần → chỉ tính 1).
+ *   - `totalSubscribers`: tổng row ACTIVE + EXPIRED + CANCELED (lịch sử sub).
+ *
+ * @param streamerId - UUID của streamer.
+ * @param since - Lọc session từ thời điểm này (default: 30 ngày trước).
  */
 export const getOverviewStats = async (
   streamerId: string,
@@ -76,7 +84,9 @@ export const getOverviewStats = async (
     },
   });
 
-  const [subsAgg, donAgg, activeSubCount, totalSubCount] = await Promise.all([
+  // Đếm DISTINCT subscriberId để tránh đếm trùng khi user upgrade tier nhiều lần.
+  // Group-by cho unique count, không phụ thuộc vào DB constraint.
+  const [subsAgg, donAgg, activeSubGroups, totalSubCount] = await Promise.all([
     db.subscription.aggregate({
       where: { streamerId, status: { in: ["ACTIVE", "EXPIRED", "CANCELED"] } },
       _sum: { totalCentsPaid: true },
@@ -85,7 +95,8 @@ export const getOverviewStats = async (
       where: { recipientId: streamerId, status: "COMPLETED" },
       _sum: { amountCents: true },
     }),
-    db.subscription.count({
+    db.subscription.groupBy({
+      by: ["subscriberId"],
       where: { streamerId, status: "ACTIVE" },
     }),
     db.subscription.count({
@@ -116,7 +127,7 @@ export const getOverviewStats = async (
     totalDonationCents: totalDonations,
     totalSubscriptionCents: totalSubs,
     totalRevenueCents: totalDonations + totalSubs,
-    totalActiveSubscribers: activeSubCount,
+    totalActiveSubscribers: activeSubGroups.length,
     totalSubscribers: totalSubCount,
   };
 };
@@ -128,6 +139,9 @@ export const getOverviewStats = async (
 /**
  * Stats theo ngày trong khoảng from → to.
  * Dùng cho chart trên analytics dashboard.
+ *
+ * Group theo UTC date (YYYY-MM-DD) để tránh lệch timezone.
+ * Nếu 1 ngày không có session → không trả về row (chart tự gap).
  */
 export const getDailyStats = async (
   streamerId: string,
@@ -142,7 +156,11 @@ export const getDailyStats = async (
     orderBy: { startedAt: "asc" },
   });
 
-  // Group by day.
+  console.log(
+    `[Analytics] getDailyStats: streamer=${streamerId} range=[${from.toISOString()} → ${to.toISOString()}] sessions=${sessions.length}`
+  );
+
+  // Group by UTC date (YYYY-MM-DD).
   const byDay = new Map<string, DailyStat>();
 
   for (const s of sessions) {
@@ -167,7 +185,9 @@ export const getDailyStats = async (
     day.newSubscribers += s.newSubscribers;
   }
 
-  return Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+  const result = Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+  console.log(`[Analytics] getDailyStats: grouped into ${result.length} days`);
+  return result;
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -281,6 +301,14 @@ export const startStreamSession = async (streamId: string) => {
 
 /**
  * Cập nhật session stats khi stream end.
+ *
+ * Logic chống overwrite:
+ *   - Nếu session đã có stats (đã update trước đó) → bỏ qua.
+ *   - Nếu stats truyền vào toàn 0 (vd: webhook LiveKit) → tính lại từ DB.
+ *
+ * @param sessionId - UUID của StreamSession.
+ * @param stats - Stats từ caller. Nếu totalViews=0 và donationCents=0 → tự tính lại.
+ * @param options.force - Bỏ qua check, luôn update (dùng cho manual end action).
  */
 export const endStreamSession = async (
   sessionId: string,
@@ -290,27 +318,121 @@ export const endStreamSession = async (
     uniqueViewers: number;
     donationCents: number;
     newSubscribers: number;
-  }
+  },
+  options?: { force?: boolean }
 ) => {
   const session = await db.streamSession.findUnique({
     where: { id: sessionId },
   });
 
-  if (!session) return;
+  if (!session) {
+    console.warn(`[Analytics] endStreamSession: session ${sessionId} not found`);
+    return;
+  }
 
   const durationSec = session.startedAt
     ? Math.round((Date.now() - session.startedAt.getTime()) / 1000)
     : 0;
+
+  // Nếu session đã có stats > 0 (đã end trước đó) và không force → bỏ qua
+  // tránh webhook LiveKit ghi đè stats tốt từ manual end action.
+  const alreadyHasStats =
+    (session.peakViewers ?? 0) > 0 ||
+    (session.totalViews ?? 0) > 0 ||
+    (session.donationCents ?? 0) > 0;
+
+  if (alreadyHasStats && !options?.force) {
+    console.log(
+      `[Analytics] endStreamSession: session ${sessionId} already has stats, skipping (use force=true to override)`
+    );
+    // Vẫn set endedAt + durationSec nếu chưa có.
+    if (!session.endedAt) {
+      return db.streamSession.update({
+        where: { id: sessionId },
+        data: { endedAt: new Date(), durationSec },
+      });
+    }
+    return;
+  }
+
+  // Nếu caller truyền toàn 0 (vd: webhook ingress_ended) → tự tính lại từ DB.
+  const allZero =
+    stats.peakViewers === 0 &&
+    stats.totalViews === 0 &&
+    stats.uniqueViewers === 0 &&
+    stats.donationCents === 0 &&
+    stats.newSubscribers === 0;
+
+  let finalStats = stats;
+  if (allZero && !options?.force) {
+    console.log(
+      `[Analytics] endStreamSession: caller passed all-zero stats for ${sessionId}, recomputing from DB`
+    );
+    finalStats = await computeSessionStatsFromDb(sessionId, session.startedAt, session.streamId);
+  }
 
   return db.streamSession.update({
     where: { id: sessionId },
     data: {
       endedAt: new Date(),
       durationSec,
-      ...stats,
+      ...finalStats,
     },
   });
 };
+
+/**
+ * Helper: tính session stats từ DB (dùng khi caller truyền stats=0).
+ * Tương tự logic trong actions/stream.ts endStream() để fix Bug 3:
+ * đảm bảo webhook LiveKit cũng tính đúng stats.
+ */
+async function computeSessionStatsFromDb(
+  sessionId: string,
+  startedAt: Date,
+  streamId: string
+): Promise<{
+  peakViewers: number;
+  totalViews: number;
+  uniqueViewers: number;
+  donationCents: number;
+  newSubscribers: number;
+}> {
+  const stream = await db.stream.findUnique({
+    where: { id: streamId },
+    select: { userId: true },
+  });
+  if (!stream) {
+    return { peakViewers: 0, totalViews: 0, uniqueViewers: 0, donationCents: 0, newSubscribers: 0 };
+  }
+
+  const [viewAgg, uniqueUserCount, donationAgg, newSubsCount] = await Promise.all([
+    db.streamView.count({ where: { sessionId } }),
+    db.streamView.findMany({
+      where: { sessionId, userId: { not: null } },
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+    db.donation.aggregate({
+      where: { streamId, status: "COMPLETED", createdAt: { gte: startedAt } },
+      _sum: { amountCents: true },
+    }),
+    db.subscription.count({
+      where: { streamerId: stream.userId, startedAt: { gte: startedAt } },
+    }),
+  ]);
+
+  const totalViews = viewAgg;
+  const uniqueViewers = uniqueUserCount.length;
+  const peakViewers = Math.max(totalViews, uniqueViewers);
+
+  return {
+    peakViewers,
+    totalViews,
+    uniqueViewers,
+    donationCents: donationAgg._sum.amountCents ?? 0,
+    newSubscribers: newSubsCount,
+  };
+}
 
 /**
  * Log 1 viewer join.

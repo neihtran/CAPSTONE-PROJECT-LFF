@@ -24,6 +24,10 @@ export function StreamerAlertPoller() {
 
   useEffect(() => {
     const poll = async () => {
+      // Bỏ qua nếu tab đang ẩn (giảm tải server + tránh app "đứng" khi user
+      // không nhìn vào tab).
+      if (document.hidden) return;
+
       try {
         const since = lastSinceRef.current;
         const res = await fetch(`/api/alerts/recent?since=${since}`);
@@ -69,12 +73,20 @@ export function StreamerAlertPoller() {
       }
     };
 
-    // Poll ngay 1 lần + interval 5s.
+    // Poll ngay 1 lần + interval 15s (tăng từ 5s → 15s để giảm tải
+    // service worker cache + tránh "treo" khi server chậm).
     poll();
-    intervalRef.current = setInterval(poll, 5000);
+    intervalRef.current = setInterval(poll, 15_000);
+
+    // Khi tab hiện lại → poll ngay để bắt alert bỏ lỡ.
+    const onVisibility = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

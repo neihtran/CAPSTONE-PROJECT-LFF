@@ -32,9 +32,9 @@ export default async function SubscriptionPage({ params: { username } }: Subscri
   return (
     <div className="w-full max-w-[1500px] mx-auto px-4 lg:px-6 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Subscription</h1>
+        <h1 className="text-2xl font-bold">Gói đăng ký</h1>
         <p className="text-sm text-muted-foreground">
-          Quản lý gói subscribe và xem subscriber của bạn
+          Quản lý gói đăng ký và xem người đã đăng ký của bạn
         </p>
       </div>
 

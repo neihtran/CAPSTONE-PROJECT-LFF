@@ -9,16 +9,19 @@ const font = Poppins({
   weight: ["200", "300", "400", "500", "600", "700", "800"],
 });
 
+/**
+ * Logo LFF (Live For Fun) — navbar cho trang browse (public).
+ */
 export function Logo() {
   return (
     <Link href="/">
       <div className="flex items-center gap-x-4 hover:opacity-75 transition">
         <div className="bg-white rounded-full p-1 mr-12 shrink-0 lg:mr-0 lg:shrink">
-          <Image src="/spooky.svg" alt="GameHub" height="32" width="32" />
+          <Image src="/lff-logo.png" alt="LFF — Live For Fun" height="32" width="32" />
         </div>
         <div className={cn(font.className, "hidden lg:block")}>
-          <p className="text-lg font-semibold">GameHub</p>
-          <p className="text-xs text-muted-foreground">Cùng chơi nào</p>
+          <p className="text-lg font-semibold">LFF</p>
+          <p className="text-xs text-muted-foreground">Live For Fun</p>
         </div>
       </div>
     </Link>

@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/user-avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   deleteClipAction,
   toggleClipFeaturedAction,
@@ -84,6 +85,9 @@ function ClipCard({
   const [isPending, startTransition] = useTransition();
   const [isFeatured, setIsFeatured] = useState(clip.isFeatured);
 
+  // Confirm dialog state.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   const handleToggleFeatured = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -101,20 +105,20 @@ function ClipCard({
     });
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
+  // Mở confirm dialog thay vì window.confirm().
+  const requestDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Xóa clip "${clip.title}"?`)) return;
-    startTransition(async () => {
-      try {
-        await deleteClipAction({ clipId: clip.id });
-        toast.success("Đã xóa clip");
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể xóa clip"
-        );
-      }
-    });
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteClipAction({ clipId: clip.id });
+      toast.success("Đã xóa clip");
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Không thể xóa clip");
+    }
   };
 
   return (
@@ -169,7 +173,7 @@ function ClipCard({
             )}
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={requestDelete}
               disabled={isPending}
               className="px-2 py-0.5 rounded text-xs bg-red-500/90 hover:bg-red-600 text-white font-medium"
               title="Xóa clip"
@@ -203,6 +207,18 @@ function ClipCard({
           👁 {clip.viewCount.toLocaleString()} lượt xem
         </p>
       </div>
+
+      {/* Confirm dialog thay thế window.confirm(). */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Xóa clip"
+        description={`Bạn có chắc muốn xóa clip "${clip.title}"? Hành động này không thể hoàn tác.`}
+        variant="danger"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleConfirmDelete}
+      />
     </Link>
   );
 }

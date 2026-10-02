@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Trending",
-  description: "Streams đang hot nhất trên GameHub",
+  description: "Streams đang hot nhất trên LFF — Live For Fun",
 };
 
 /**

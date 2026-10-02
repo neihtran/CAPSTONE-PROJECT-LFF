@@ -14,26 +14,28 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    template: "%s | GameHub",
-    default: "GameHub",
+    template: "%s | LFF — Live For Fun",
+    default: "LFF — Live For Fun",
   },
-  description: "Twitch Clone with Next.js, React.js, TailWindCSS & TypeScript.",
+  description: "LFF (Live For Fun) — Nền tảng livestream kết hợp chat, alerts, ranks, events & PWA push.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "GameHub",
+    title: "LFF",
   },
   icons: {
-    apple: "/icon-192.png",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/lff-logo.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: "/lff-logo.png",
   },
 };
 
-// `themeColor` được tách ra `viewport` export theo yêu cầu của Next.js 14+
-// (xem https://nextjs.org/docs/app/api-reference/functions/generate-viewport).
-// Đặt ở `metadata` sẽ bị Next.js cảnh báo deprecated mỗi lần render.
+// Theme color cyan/xanh dương — đồng bộ với brand "live" của logo LFF.
 export const viewport: Viewport = {
-  themeColor: "#9146ff",
+  themeColor: "#06b6d4",
 };
 
 export default function RootLayout({
@@ -57,7 +59,7 @@ export default function RootLayout({
             attribute="class"
             defaultTheme="dark"
             enableSystem
-            storageKey="gamehub-theme"
+            storageKey="lff-theme"
           >
             <Toaster theme="system" position="bottom-center" />
             <SWRegister />

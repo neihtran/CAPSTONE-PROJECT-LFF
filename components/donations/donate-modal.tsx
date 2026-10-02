@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { PRESET_AMOUNTS } from "@/lib/donation-service";
 import { formatVND, parseVNDInput } from "@/lib/format";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { getDonationTier, getDonationTierStyle, DONATION_TIER_THRESHOLDS, TierEffectOverlay } from "./donation-tier";
 
 /**
  * DonateModal — popup cho viewer donate tip.
@@ -67,7 +69,42 @@ export function DonateModal({
       if (!res.ok) throw new Error(data.error ?? "Donation failed");
 
       toast.success(
-        `Đã donate ${formatVND(displayAmount)} cho ${recipientName}! 🎉`
+        <div className="flex items-center gap-2">
+          {(() => {
+            const t = getDonationTier(displayAmount);
+            const s = getDonationTierStyle(t);
+            const isPremium = t === "GOLD" || t === "DIAMOND";
+            return (
+              <span
+                className={cn(
+                  "text-2xl",
+                  isPremium && "animate-pulse",
+                  s.text
+                )}
+                aria-hidden="true"
+              >
+                {s.icon}
+              </span>
+            );
+          })()}
+          <div className="flex flex-col">
+            <span className="font-semibold">
+              Đã donate {formatVND(displayAmount)} cho {recipientName}! 🎉
+            </span>
+            {displayAmount >= DONATION_TIER_THRESHOLDS.SILVER && (
+              <span className="text-xs text-muted-foreground">
+                {(() => {
+                  const t = getDonationTier(displayAmount);
+                  const s = getDonationTierStyle(t);
+                  return `${s.icon} Tier ${s.label} — cảm ơn bạn rất nhiều!`;
+                })()}
+              </span>
+            )}
+          </div>
+        </div>,
+        {
+          duration: 5000,
+        }
       );
       setMessage("");
       setCustomAmount("");
@@ -97,23 +134,50 @@ export function DonateModal({
           <div>
             <p className="text-sm font-medium mb-2">Chọn số tiền</p>
             <div className="flex flex-wrap gap-2">
-              {PRESET_AMOUNTS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => {
-                    setAmount(preset);
-                    setCustomAmount("");
-                  }}
-                  className={`px-4 py-2 rounded-full border text-sm font-medium transition-colors ${
-                    !isCustom && amount === preset
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-muted hover:border-primary hover:text-primary"
-                  }`}
-                >
-                  {formatVND(preset)}
-                </button>
-              ))}
+              {PRESET_AMOUNTS.map((preset) => {
+                // Tier-based style cho preset button.
+                const presetTier = getDonationTier(preset);
+                const tierStyle = getDonationTierStyle(presetTier);
+                const isActive = !isCustom && amount === preset;
+
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setAmount(preset);
+                      setCustomAmount("");
+                    }}
+                    className={cn(
+                      "relative overflow-hidden rounded-full border-2 px-4 py-2 text-sm font-medium transition-all",
+                      tierStyle.border,
+                      isActive
+                        ? cn(tierStyle.bg, tierStyle.glow, tierStyle.text, "ring-2 ring-offset-2 ring-offset-background", "scale-105")
+                        : cn("bg-background", "hover:scale-105", tierStyle.text)
+                    )}
+                  >
+                    {/* Effects overlay cho tier cao */}
+                    {isActive && (presetTier === "SILVER" || presetTier === "GOLD" || presetTier === "DIAMOND") && (
+                      <TierEffectOverlay tier={presetTier} />
+                    )}
+                    {/* Content với z-index để overlay không che text */}
+                    <span className="relative z-10 flex items-center gap-1">
+                      {presetTier !== "BRONZE" && (
+                        <span
+                          className={cn(
+                            presetTier === "GOLD" && "animate-pulse",
+                            presetTier === "DIAMOND" && "animate-pulse"
+                          )}
+                          aria-hidden="true"
+                        >
+                          {tierStyle.icon}
+                        </span>
+                      )}
+                      {formatVND(preset)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

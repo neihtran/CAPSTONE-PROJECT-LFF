@@ -153,9 +153,100 @@ export const subscribeToTier = async (params: {
 
   const tier = await db.subscriptionTier.findFirst({
     where: { id: tierId, streamerId, status: "ACTIVE" },
+    include: { subscriptions: false },
   });
   if (!tier) throw new Error("Tier không tồn tại hoặc đã bị disable");
 
+  // Fix vấn đề 4 FIX-PROMPT-2.md: chặn hạ gói trong period hiện tại.
+  // - Nâng gói (level lớn hơn): OK, giữ period (không reset), KHÔNG charge lại.
+  // - Cùng gói: cảnh báo.
+  // - Hạ gói: chặn đến khi period hết hạn.
+  // - Period đã hết → reset về now + 1 tháng (mọi tier OK).
+  // - CANCELED → cho phép re-activate ở bất kỳ gói nào.
+  const existingSub = await db.subscription.findFirst({
+    where: {
+      subscriberId,
+      streamerId,
+      status: { in: ["ACTIVE", "CANCELED"] },
+    },
+    include: { tier: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const now = new Date();
+  const stillActive =
+    existingSub &&
+    existingSub.status === "ACTIVE" &&
+    existingSub.currentPeriodEnd > now;
+
+  if (stillActive && existingSub) {
+    const currentLevel = existingSub.tier.level;
+    const newLevel = tier.level;
+
+    if (newLevel < currentLevel) {
+      throw new Error(
+        "Không thể hạ gói trong tháng hiện tại. Vui lòng đợi đến khi gói hiện tại hết hạn."
+      );
+    }
+    if (newLevel === currentLevel) {
+      throw new Error("Bạn đã subscribe gói này rồi");
+    }
+    // newLevel > currentLevel → nâng gói: GIỮ NGUYÊN period, không charge.
+    const upgraded = await db.subscription.update({
+      where: { id: existingSub.id },
+      data: {
+        tierId,
+        // KHÔNG charge paymentRef mới (giữ nguyên payment gốc).
+        // KHÔNG reset currentPeriodEnd.
+        // Cộng dồn totalCentsPaid (delta) để analytics chính xác.
+        totalCentsPaid: {
+          increment: Math.max(0, tier.priceCents - existingSub.tier.priceCents),
+        },
+        canceledAt: null,
+        status: "ACTIVE",
+      },
+    });
+
+    // Alert + XP + event cho lần nâng gói.
+    const subscriber = await db.user.findUnique({
+      where: { id: subscriberId },
+      select: { id: true, username: true },
+    });
+    Promise.all([
+      (async () => {
+        try {
+          const { buildAlert } = await import("@/lib/alert-service");
+          await buildAlert({
+            streamerId,
+            type: "SUBSCRIBE",
+            username: subscriber?.username ?? "Anonymous",
+            tierName: tier.name,
+          });
+        } catch (err) {
+          console.warn("[subscribeToTier] alert trigger failed:", err);
+        }
+      })(),
+      (async () => {
+        try {
+          const { recalculateStreamerXp } = await import(
+            "@/lib/streamer-level-service"
+          );
+          await recalculateStreamerXp(streamerId);
+        } catch (err) {
+          console.warn("[subscribeToTier] XP recalc failed:", err);
+        }
+      })(),
+    ]);
+
+    return {
+      id: upgraded.id,
+      paymentRef: upgraded.paymentRef ?? existingSub.paymentRef ?? "",
+      currentPeriodEnd: upgraded.currentPeriodEnd,
+    };
+  }
+
+  // Fix vấn đề 4 FIX-PROMPT-2.md: Tạo mới hoặc re-activate khi đã hết hạn.
+  // Reset period = now + 1 tháng.
   // Mock payment.
   const payment = await createSubscriptionIntent(
     tier.priceCents,
@@ -176,7 +267,7 @@ export const subscribeToTier = async (params: {
   let saved: { id: string; paymentRef: string | null; currentPeriodEnd: Date };
 
   if (sub) {
-    // Re-subscribe: update tier + reset period.
+    // Re-subscribe (đã hết hạn hoặc đang CANCELED): update tier + reset period.
     const updated = await db.subscription.update({
       where: { id: sub.id },
       data: {

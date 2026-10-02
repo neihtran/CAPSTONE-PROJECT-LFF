@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/user-avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   addModeratorAction,
   removeModeratorAction,
@@ -40,6 +41,13 @@ export function ModeratorsList({
   const [username, setUsername] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  // Confirm dialog state.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<{
+    userId: string;
+    modUsername: string;
+  } | null>(null);
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = username.trim();
@@ -71,19 +79,24 @@ export function ModeratorsList({
     });
   };
 
-  const handleRemove = (userId: string, modUsername: string) => {
-    if (!confirm(`Xóa @${modUsername} khỏi danh sách moderator?`)) return;
+  // Mở confirm dialog thay vì dùng window.confirm().
+  const requestRemove = (userId: string, modUsername: string) => {
+    setPendingRemove({ userId, modUsername });
+    setConfirmOpen(true);
+  };
 
-    startTransition(async () => {
-      try {
-        await removeModeratorAction({ streamId, userId });
-        toast.success(`Đã xóa @${modUsername}`);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Không thể xóa moderator"
-        );
-      }
-    });
+  const handleConfirmRemove = async () => {
+    if (!pendingRemove) return;
+    const { userId, modUsername } = pendingRemove;
+    try {
+      await removeModeratorAction({ streamId, userId });
+      toast.success(`Đã xóa @${modUsername}`);
+      setPendingRemove(null);
+    } catch (err) {
+      // Caller đã log; bubble lại để ConfirmDialog hiển thị "đã xảy ra lỗi".
+      setPendingRemove(null);
+      throw err instanceof Error ? err : new Error("Không thể xóa moderator");
+    }
   };
 
   return (
@@ -142,7 +155,7 @@ export function ModeratorsList({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleRemove(mod.userId, mod.username)}
+                  onClick={() => requestRemove(mod.userId, mod.username)}
                   disabled={isPending}
                   className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                 >
@@ -153,6 +166,25 @@ export function ModeratorsList({
           ))
         )}
       </div>
+
+      {/* Confirm dialog thay thế window.confirm(). */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(o) => {
+          setConfirmOpen(o);
+          if (!o) setPendingRemove(null);
+        }}
+        title="Xóa moderator"
+        description={
+          pendingRemove
+            ? `Bạn có chắc muốn xóa @${pendingRemove.modUsername} khỏi danh sách moderator?`
+            : ""
+        }
+        variant="danger"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleConfirmRemove}
+      />
     </div>
   );
 }

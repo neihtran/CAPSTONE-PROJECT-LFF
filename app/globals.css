@@ -6,7 +6,6 @@ html,
 body,
 :root {
   height: 100%;
-  @apply bg-neutral-900/80;
 }
 
 .hidden-scrollbar {
@@ -88,5 +87,83 @@ body,
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================================
+ * Bug 1 Fix: Theme consistency
+ * ============================================================
+ * Bug 2 Fix: Tier animations (sub + donate)
+ * Pure CSS animations - no library.
+ * Honors prefers-reduced-motion for accessibility.
+ * ============================================================ */
+
+@keyframes tier-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes tier-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes tier-gradient-rotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes tier-pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px var(--tier-glow, rgba(255, 215, 0, 0.4)); }
+  50% { box-shadow: 0 0 35px var(--tier-glow, rgba(255, 215, 0, 0.6)); }
+}
+
+.tier-shimmer-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: tier-shimmer 2.5s linear infinite;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+}
+
+.tier-rainbow-border {
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    #fbbf24,
+    #f472b6,
+    #818cf8,
+    #34d399,
+    #fbbf24
+  );
+  background-size: 300% 100%;
+  animation: tier-gradient-rotate 4s linear infinite;
+}
+
+.tier-pulse-glow {
+  animation: tier-pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-tier-sparkle {
+  animation: tier-sparkle 2s ease-in-out infinite;
+}
+
+/* Accessibility: respect user's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  .tier-shimmer-overlay::before,
+  .tier-rainbow-border,
+  .tier-pulse-glow,
+  .animate-tier-sparkle {
+    animation: none !important;
   }
 }

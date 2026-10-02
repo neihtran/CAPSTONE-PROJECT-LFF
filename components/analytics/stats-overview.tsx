@@ -39,13 +39,13 @@ function fmtDuration(sec: number): string {
 
 const CARDS = [
   { key: "totalViews", label: "Tổng lượt xem", format: fmtNumber, color: "#9146FF" },
-  { key: "totalStreamHours", label: "Giờ stream", format: (n: number) => `${n}h`, color: "#00C2A8" },
-  { key: "avgPeakViewers", label: "Trung bình peak viewers", format: fmtNumber, color: "#FF6B6B" },
-  { key: "totalActiveSubscribers", label: "Active subscribers", format: fmtNumber, color: "#FFD700" },
+  { key: "totalStreamHours", label: "Giờ phát sóng", format: (n: number) => `${n}h`, color: "#00C2A8" },
+  { key: "avgPeakViewers", label: "Trung bình lượt xem cao nhất", format: fmtNumber, color: "#FF6B6B" },
+  { key: "totalActiveSubscribers", label: "Người đăng ký đang hoạt động", format: fmtNumber, color: "#FFD700" },
   { key: "totalRevenueCents", label: "Tổng thu nhập", format: fmtRevenue, color: "#32CD32" },
-  { key: "totalDonationCents", label: "Từ Donation", format: fmtRevenue, color: "#FF8C00" },
-  { key: "totalSubscriptionCents", label: "Từ Subscription", format: fmtRevenue, color: "#9146FF" },
-  { key: "totalStreamSessions", label: "Số lần stream", format: fmtNumber, color: "#00BFFF" },
+  { key: "totalDonationCents", label: "Từ tiền donate", format: fmtRevenue, color: "#FF8C00" },
+  { key: "totalSubscriptionCents", label: "Từ gói đăng ký", format: fmtRevenue, color: "#9146FF" },
+  { key: "totalStreamSessions", label: "Số lần live", format: fmtNumber, color: "#00BFFF" },
 ] as const;
 
 export function StatsOverview({ overview }: { overview: Overview }) {

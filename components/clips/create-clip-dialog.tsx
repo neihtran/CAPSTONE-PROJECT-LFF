@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,14 @@ export function CreateClipDialog({
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(60);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  // Reset form về default sau khi tạo thành công.
+  const resetForm = () => {
+    setTitle(`Clip từ ${streamName}`);
+    setStartTime(0);
+    setEndTime(60);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,14 +57,29 @@ export function CreateClipDialog({
 
     startTransition(async () => {
       try {
-        await createClipAction({
+        const result = await createClipAction({
           streamId,
           title: title.trim(),
           videoUrl,
           startTime,
           endTime,
         });
-        toast.success("Đã tạo clip!");
+        // Fix bug "tạo xong không có chỗ xem lại": hiện toast có nút "Xem clip"
+        // → click là chuyển sang trang /clips/[clipId] để xem.
+        // KHÔNG auto-redirect (gây khó chịu nếu user muốn tạo tiếp).
+        const clipId = result?.clipId;
+        if (clipId) {
+          toast.success("Đã tạo clip!", {
+            description: "Nhấn để xem ngay",
+            action: {
+              label: "Xem clip",
+              onClick: () => router.push(`/clips/${clipId}`),
+            },
+          });
+        } else {
+          toast.success("Đã tạo clip!");
+        }
+        resetForm();
         onOpenChange(false);
       } catch (err) {
         toast.error(

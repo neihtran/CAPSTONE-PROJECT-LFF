@@ -35,3 +35,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ─── Dev/test docs (Markdown) ─────────────────────────────────
+# Prompt Cursor hoặc review nội bộ — KHÔNG commit production.
+/DO_AN_REVIEW.md
+/FIX-PROMPT*.md
+/PROMPT-FIX-*.md
+/PROMPT-LIVEKIT-*.md
+
+# ─── Test scripts (verify fix) ────────────────────────────────
+# Scripts chạy 1 lần verify fix — KHÔNG commit.
+/scripts/test-fixes.ts
+/scripts/test-scenarios.ts
+/scripts/test-e2e.ts
+/scripts/verify-fixes.ts
+/scripts/verify-fixes-viii.ts
+
+# ─── Build log + backup SQL ───────────────────────────────────
+# Log build từ npm run build — KHÔNG commit.
+/build_fresh.log
+
+# Backup SQL local — KHÔNG commit (chứa data cá nhân).
+/backup.sql

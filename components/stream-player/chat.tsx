@@ -81,16 +81,41 @@ export function Chat({
   // Lịch sử chat load từ DB khi mount (giữ qua refresh/toggle chat).
   // Format tương thích ReceivedChatMessage để merge liền mạch.
   const [history, setHistory] = useState<HistoryItemType[]>([]);
-  // Flag để chỉ load history 1 lần tránh spam DB.
+  // Flag để track session đã load history.
+  // Fix Bug 3: refetch khi isOnline thay đổi (streamer end → start live mới).
   const historyLoaded = useRef(false);
+  // Cache session ID để biết khi nào session thay đổi (end → start).
+  // Lưu timestamp của session hiện tại để so sánh.
+  const lastSessionRef = useRef<string | null>(null);
 
   const { chatMessages: liveMessages, send } = useChat();
 
-  // Load lịch sử chat từ DB 1 lần khi mount.
-  // Không depend vào isChatEnabled — vẫn load dù chat đang tắt hay bật.
+  // Load lịch sử chat từ DB khi session thay đổi.
+  //
+  // Fix Bug 3: KHÔNG chỉ load 1 lần khi mount. Khi streamer:
+  //   1. Mount → load history (lần đầu).
+  //   2. End live → isOnline chuyển true → false. Clear history ngay.
+  //   3. Start live mới → isOnline chuyển false → true. Refetch history (sẽ rỗng
+  //      vì session mới chưa có message, nhưng an toàn để clear state cũ).
+  //
+  // Logic:
+  //   - Dùng `isOnline` (LiveKit connection state) làm trigger.
+  //   - Mỗi lần isOnline chuyển sang `true` → load history mới.
+  //   - Nếu server trả về [] (session mới chưa có message) → state sẽ là [].
   useEffect(() => {
+    if (!isOnline) {
+      // Streamer không online (đã end live hoặc chưa start) → clear local state.
+      setHistory([]);
+      historyLoaded.current = false;
+      lastSessionRef.current = null;
+      return;
+    }
+
+    // Đã load cho session hiện tại rồi → không load lại (tránh spam).
+    // (Chỉ load lại khi isOnline chuyển từ false → true.)
     if (historyLoaded.current) return;
     historyLoaded.current = true;
+    lastSessionRef.current = "active"; // marker
 
     fetch(`/api/chat/history?streamId=${encodeURIComponent(hostIdentity)}`)
       .then((res) => (res.ok ? res.json() : { messages: [] }))
@@ -102,7 +127,7 @@ export function Chat({
       .catch((err) => {
         console.warn("[chat] Lỗi load history:", err);
       });
-  }, [hostIdentity]);
+  }, [isOnline, hostIdentity]);
 
   useEffect(() => {
     if (matches) {

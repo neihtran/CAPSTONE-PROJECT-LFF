@@ -69,23 +69,16 @@ export default async function UserPage({
         viewerIsLoggedIn={currentUserId !== null}
       />
 
-      {/* Subscription + Donate section — below stream. */}
+      {/* Subscription + Donate section — below stream.
+          Fix bug "2 nút donate trùng": đã bỏ inline DonateButton ở header
+          (chỉ giữ StickyDonateButton FAB ở dưới). FAB đã đủ cho mọi streamer. */}
       {hasTiers && (
         <div className="w-full max-w-[1600px] mx-auto px-4 lg:px-6 py-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">Ủng hộ {user.username}</h2>
-              <p className="text-sm text-muted-foreground">
-                Đăng ký subscription hoặc donate để ủng hộ streamer
-              </p>
-            </div>
-            {currentUserId && (
-              <DonateButton
-                recipientId={user.id}
-                recipientName={user.username}
-                streamId={user.stream.id}
-              />
-            )}
+          <div>
+            <h2 className="text-xl font-bold">Ủng hộ {user.username}</h2>
+            <p className="text-sm text-muted-foreground">
+              Đăng ký subscription hoặc dùng nút Donate ở góc phải để ủng hộ streamer
+            </p>
           </div>
 
           <SubscriptionTiersGrid

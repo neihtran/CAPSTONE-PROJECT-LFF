@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useTransition, ElementRef } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { Power } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function EndLiveButton({
   const closeRef = useRef<ElementRef<"button">>(null);
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   // Nếu stream không live → không hiện nút.
   if (!isLive) return null;
@@ -52,6 +54,9 @@ export function EndLiveButton({
         await endStream(streamId);
         toast.success("Đã kết thúc Live");
         setOpen(false);
+        // Fix bug "end live nhưng banner LIVE vẫn hiện trên dashboard":
+        // revalidate layout để server component lấy isLive=false mới nhất.
+        router.refresh();
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Không thể kết thúc stream"

@@ -41,8 +41,8 @@ export function TopStreamsTable({ streams }: { streams: TopStreamStat[] }) {
   return (
     <div className="rounded-xl border overflow-hidden">
       <div className="px-6 py-4 border-b">
-        <h3 className="font-semibold">Top Streams</h3>
-        <p className="text-sm text-muted-foreground">Các stream có lượng xem cao nhất</p>
+        <h3 className="font-semibold">Stream nổi bật</h3>
+        <p className="text-sm text-muted-foreground">Các phiên phát sóng có lượng xem cao nhất</p>
       </div>
 
       <div className="overflow-x-auto">
@@ -52,10 +52,10 @@ export function TopStreamsTable({ streams }: { streams: TopStreamStat[] }) {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">#</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Ngày</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Lượt xem</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Peak viewers</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Unique viewers</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Duration</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Lượt xem cao nhất</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Người xem duy nhất</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Thời lượng</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Doanh thu</th>
             </tr>
           </thead>
           <tbody className="divide-y">

@@ -43,6 +43,82 @@ export const getFollwedUser = async () => {
   }
 };
 
+/**
+ * Lấy danh sách followers (những người theo dõi mình).
+ * Dùng cho trang Community dashboard.
+ *
+ * Edge cases đã handle:
+ *   - Không có self (chưa login) → return [].
+ *   - Lỗi DB / Prisma → log + throw để caller xử lý (KHÔNG nuốt exception).
+ *   - Filter loại bỏ follower đã bị mình chặn (hiển thị người mình không block).
+ *
+ * @returns Danh sách followers, mỗi row có shape:
+ *   { id, createdAt, user: { id, username, imageUrl, isLive } }
+ * @throws Error nếu DB query fail (để caller quyết định fallback UI).
+ */
+export const getFollowers = async () => {
+  const self = await getSelf();
+  if (!self) {
+    console.warn("[FollowService] getFollowers: no self (chưa login)");
+    return [];
+  }
+
+  const followers = await db.follow.findMany({
+    where: {
+      followingId: self.id,
+      // Bỏ qua những follower mà mình đã block (không cần hiển thị).
+      follower: {
+        blocking: {
+          none: {
+            blockedId: self.id,
+          },
+        },
+      },
+    },
+    include: {
+      follower: {
+        include: {
+          stream: {
+            select: {
+              isLive: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  console.log(
+    `[FollowService] getFollowers: found ${followers.length} rows for streamer ${self.id}`
+  );
+
+  return followers.map((f) => ({
+    id: f.id,
+    createdAt: f.createdAt,
+    user: {
+      id: f.follower.id,
+      username: f.follower.username,
+      imageUrl: f.follower.imageUrl,
+      isLive: f.follower.stream?.isLive ?? false,
+    },
+  }));
+};
+
+/**
+ * Đếm số followers (để hiển thị badge/tab).
+ */
+export const getFollowerCount = async () => {
+  try {
+    const self = await getSelf();
+    return await db.follow.count({
+      where: { followingId: self.id },
+    });
+  } catch {
+    return 0;
+  }
+};
+
 export const isFollowingUser = async (id: string) => {
   try {
     const self = await getSelf();
