@@ -8,6 +8,9 @@ import {
   getRecentActivity,
 } from "@/lib/analytics-service";
 
+// Route này phụ thuộc headers/auth context → bắt buộc dynamic, không build tĩnh.
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/analytics/overview
  *    → tổng quan stats của streamer hiện tại.

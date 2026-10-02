@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { searchTags } from "@/lib/tag-service";
 
+// Route đọc request.url (searchParams) → bắt buộc dynamic, không build tĩnh.
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/tags/search?q=prefix
  *

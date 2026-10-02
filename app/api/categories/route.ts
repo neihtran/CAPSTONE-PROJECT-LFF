@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getAllCategories, getTrendingCategories } from "@/lib/category-service";
 
+// Route đọc request.url (searchParams) → bắt buộc dynamic, không build tĩnh.
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/categories
  *

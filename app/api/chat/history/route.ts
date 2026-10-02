@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { loadChatHistory } from "@/lib/chat-service";
 import { db } from "@/lib/db";
 
+// Route đọc request.url (searchParams) → bắt buộc dynamic, không build tĩnh.
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/chat/history?streamId={userId}
  *
